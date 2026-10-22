@@ -63,7 +63,7 @@
             <!-- ===== COMPACT: now playing (art + equalizer) ===== -->
             <Grid x:Name="CompactMedia" Visibility="Collapsed" Margin="14,0">
                 <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
-                    <Border HorizontalAlignment="Left" Width="24" Height="24" CornerRadius="6" ClipToBounds="True">
+                    <Border HorizontalAlignment="Left" Width="24" Height="24" CornerRadius="6" ClipToBounds="True" Background="#2A2A30">
                         <Image x:Name="CArt" Stretch="UniformToFill"/>
                     </Border>
                     <StackPanel x:Name="CEq" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Height="15">

@@ -97,6 +97,11 @@ namespace IslandNative
         // ---------- main loop ----------
         void Loop()
         {
+            // Step aside for full-screen apps (games, videos, slideshows).
+            bool fs = ForegroundIsFullscreen();
+            Notch.Visibility = fs ? Visibility.Hidden : Visibility.Visible;
+            if (fs) { if (_lastTarget != 0) { SetClickThrough(true); _lastTarget = 0; } _t = 0; return; }
+
             GetCursorPos(out var p);
             double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
             double cx = p.X / scale, cy = p.Y / scale;
@@ -313,6 +318,23 @@ namespace IslandNative
 
         [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+
+        [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] static extern IntPtr GetDesktopWindow();
+        [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+
+        bool ForegroundIsFullscreen()
+        {
+            var fg = GetForegroundWindow();
+            if (fg == IntPtr.Zero || fg == GetDesktopWindow() || fg == GetShellWindow()) return false;
+            if (!GetWindowRect(fg, out var r)) return false;
+            double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            int pw = (int)(SystemParameters.PrimaryScreenWidth * scale);
+            int ph = (int)(SystemParameters.PrimaryScreenHeight * scale);
+            return r.Left <= 0 && r.Top <= 0 && r.Right >= pw - 1 && r.Bottom >= ph - 1;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         struct SYSTEM_POWER_STATUS { public byte ACLineStatus; public byte BatteryFlag; public byte BatteryLifePercent; public byte Reserved1; public int BatteryLifeTime; public int BatteryFullLifeTime; }
