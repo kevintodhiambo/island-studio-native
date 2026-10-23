@@ -76,10 +76,10 @@ namespace IslandNative
                     return;
                 }
                 _tray = new Tray();
-                _dock = new DockWindow();
-                _dock.Show();
+                if (Settings.Data.DockEnabled) { _dock = new DockWindow(); _dock.Show(); }
+                Settings.Changed += OnSettingsChanged;
             };
-            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); };
+            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); Settings.Changed -= OnSettingsChanged; };
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
 
             BtnPrev.Click += (s, e) => _media?.Prev();
@@ -189,7 +189,7 @@ namespace IslandNative
             _t += (_tTarget - _t) * 0.28;
             if (Math.Abs(_t - _tTarget) < 0.0015) _t = _tTarget;
 
-            bool idle = _t < 0.02 && !(_mi.Active && _mi.Playing) && (DateTime.Now - _lastActive).TotalSeconds > IdleSeconds;
+            bool idle = Settings.Data.IdleEyes && _t < 0.02 && !(_mi.Active && _mi.Playing) && (DateTime.Now - _lastActive).TotalSeconds > IdleSeconds;
             if (Math.Abs(_t - prev) > 0.00005) ApplyShape();
             ApplyLayers(idle);
             if (idle) { Blink(); Glance(); }
@@ -399,6 +399,13 @@ namespace IslandNative
 
         void UpdateVolIcon() => VolIcon.Text = _vol.GetMute() ? "" : "";
 
+        void OnSettingsChanged()
+        {
+            bool want = Settings.Data.DockEnabled;
+            if (want && _dock == null) { _dock = new DockWindow(); _dock.Show(); }
+            else if (!want && _dock != null) { _dock.Close(); _dock = null; }
+        }
+
         static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
         // ---------- offscreen capture (verify without the screen) ----------
@@ -427,6 +434,8 @@ namespace IslandNative
             _mi = new MediaInfo(); _t = 0; ApplyShape(); ApplyLayers(true); Shot(System.IO.Path.Combine(dir, "idle.png"));
             // dock bar
             try { new DockWindow().RenderBarForCapture(System.IO.Path.Combine(dir, "dock.png")); } catch { }
+            // settings window
+            try { new SettingsWindow().RenderForCapture(System.IO.Path.Combine(dir, "settings.png")); } catch { }
             Application.Current.Shutdown();
         }
 

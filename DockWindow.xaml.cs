@@ -18,7 +18,8 @@ namespace IslandNative
 
     public partial class DockWindow : Window
     {
-        const double Base = 44, Max = 66;
+        double Base => Settings.Data.DockIconSize;
+        double Max => Base * 1.5;
         double Influence => Base * 2.6;
 
         class Item
@@ -55,7 +56,11 @@ namespace IslandNative
                 loop.Tick += (a, b) => Loop();
                 loop.Start();
             };
+            Settings.Changed += OnSettingsChanged;
+            Closed += (s, e) => Settings.Changed -= OnSettingsChanged;
         }
+
+        void OnSettingsChanged() => Dispatcher.BeginInvoke(() => { Rebuild(); RefreshRunning(); });
 
         void Rebuild()
         {
@@ -184,7 +189,7 @@ namespace IslandNative
                     catch { icx = -9999; }
                     double d = Math.Abs(cx - icx);
                     double s = 1;
-                    if (d < Influence) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
+                    if (d < Influence && Settings.Data.DockMagnify) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
                     it.Img.Width = Base * s; it.Img.Height = Base * s;
                 }
             }
