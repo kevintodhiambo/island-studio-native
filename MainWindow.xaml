@@ -78,10 +78,10 @@
             <!-- ===== Idle eyes ===== -->
             <StackPanel x:Name="Eyes" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
                 <StackPanel.RenderTransform><TranslateTransform x:Name="EyesT"/></StackPanel.RenderTransform>
-                <Ellipse x:Name="EyeL" Width="7" Height="7" Fill="White" Margin="5,0" RenderTransformOrigin="0.5,0.5">
+                <Ellipse x:Name="EyeL" Width="9" Height="9" Fill="White" Margin="6,0" RenderTransformOrigin="0.5,0.5">
                     <Ellipse.RenderTransform><ScaleTransform x:Name="EyeLS"/></Ellipse.RenderTransform>
                 </Ellipse>
-                <Ellipse x:Name="EyeR" Width="7" Height="7" Fill="White" Margin="5,0" RenderTransformOrigin="0.5,0.5">
+                <Ellipse x:Name="EyeR" Width="9" Height="9" Fill="White" Margin="6,0" RenderTransformOrigin="0.5,0.5">
                     <Ellipse.RenderTransform><ScaleTransform x:Name="EyeRS"/></Ellipse.RenderTransform>
                 </Ellipse>
             </StackPanel>

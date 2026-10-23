@@ -16,9 +16,11 @@ namespace IslandNative
     {
         const double CompactW = 230, CompactH = 38;
         const double ExpandedW = 460, ExpandedH = 142;
+        const double IdleW = 92, IdleH = 34; // small "eyes" pill when resting
         const double Shoulder = 16, Bottom = 20;
 
         double _t, _tTarget, _lastTarget = -1;
+        double _idleT; // 0 = compact, 1 = idle (eyes) pill
         DateTime _lastActive = DateTime.Now;
         const double IdleSeconds = 15;
 
@@ -118,9 +120,13 @@ namespace IslandNative
             double prev = _t;
             _t += (_tTarget - _t) * 0.28;
             if (Math.Abs(_t - _tTarget) < 0.0015) _t = _tTarget;
-            if (Math.Abs(_t - prev) > 0.00005) ApplyShape();
 
             bool idle = _t < 0.02 && !(_mi.Active && _mi.Playing) && (DateTime.Now - _lastActive).TotalSeconds > IdleSeconds;
+            double idleTarget = idle ? 1 : 0, pIdle = _idleT;
+            _idleT += (idleTarget - _idleT) * 0.2;
+            if (Math.Abs(_idleT - idleTarget) < 0.002) _idleT = idleTarget;
+
+            if (Math.Abs(_t - prev) > 0.00005 || Math.Abs(_idleT - pIdle) > 0.00005) ApplyShape();
             ApplyLayers(idle);
             if (idle) { Blink(); Glance(); }
             else if (EyesT.X != 0) EyesT.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(150)));
@@ -131,8 +137,10 @@ namespace IslandNative
 
         void ApplyShape()
         {
-            double w = CompactW + (ExpandedW - CompactW) * _t;
-            double h = CompactH + (ExpandedH - CompactH) * _t;
+            double baseW = CompactW + (IdleW - CompactW) * _idleT;
+            double baseH = CompactH + (IdleH - CompactH) * _idleT;
+            double w = baseW + (ExpandedW - baseW) * _t;
+            double h = baseH + (ExpandedH - baseH) * _t;
             Notch.Width = w;
             Notch.Height = h;
             NotchBg.Data = BuildNotch(w, h, Shoulder, Bottom);
@@ -274,6 +282,8 @@ namespace IslandNative
             ApplyShape(); ApplyLayers(false); UpdateProgress(); Shot(System.IO.Path.Combine(dir, "media.png"));
             // compact now-playing
             _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "compact-media.png"));
+            // idle eyes pill
+            _mi = new MediaInfo(); _t = 0; _idleT = 1; ApplyShape(); ApplyLayers(true); Shot(System.IO.Path.Combine(dir, "idle.png"));
             Application.Current.Shutdown();
         }
 
