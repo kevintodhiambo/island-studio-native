@@ -167,6 +167,7 @@
                 <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
                     <TextBlock x:Name="ETime" Foreground="White" FontSize="42" FontWeight="SemiBold" LineHeight="44"/>
                     <TextBlock x:Name="EDate" Foreground="#9A9A9E" FontSize="13" Margin="2,4,0,0"/>
+                    <TextBlock x:Name="WxText" Foreground="#B8B8BE" FontSize="12.5" Margin="2,8,0,0" Visibility="Collapsed"/>
                 </StackPanel>
                 <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="#1E1E22" CornerRadius="9" Padding="10,4">
                     <TextBlock x:Name="EBatt" Foreground="#E6E6EA" FontSize="12.5" FontWeight="SemiBold"/>

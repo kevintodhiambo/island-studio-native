@@ -42,6 +42,8 @@ namespace IslandNative
         bool _lyricsOn;
         int _lyIdx = -2;
 
+        WeatherInfo? _weather;
+
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
         int _eqBeat;
@@ -67,6 +69,11 @@ namespace IslandNative
                 _vol = new VolumeService();
                 _bri = new BrightnessService();
                 InitControlCenter();
+
+                FetchWeather();
+                var wx = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
+                wx.Tick += (s2, e2) => FetchWeather();
+                wx.Start();
 
                 // Offscreen render capture for verification while the screen is locked.
                 var shotDir = Environment.GetEnvironmentVariable("ISLAND_SHOT_DIR");
@@ -406,6 +413,24 @@ namespace IslandNative
             else if (!want && _dock != null) { _dock.Close(); _dock = null; }
         }
 
+        void FetchWeather()
+        {
+            WeatherService.Fetch().ContinueWith(t => Dispatcher.BeginInvoke(() =>
+            {
+                var w = t.Result;
+                if (w == null) return;
+                _weather = w;
+                ShowWeather();
+            }));
+        }
+
+        void ShowWeather()
+        {
+            if (_weather == null) { WxText.Visibility = Visibility.Collapsed; return; }
+            WxText.Text = $"{_weather.Emoji}  {_weather.Temp}°  {_weather.Label}" + (string.IsNullOrEmpty(_weather.City) ? "" : $" · {_weather.City}");
+            WxText.Visibility = Visibility.Visible;
+        }
+
         static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
         // ---------- offscreen capture (verify without the screen) ----------
@@ -415,7 +440,8 @@ namespace IslandNative
             // compact clock
             _mi = new MediaInfo(); _page = "info"; ApplyLayers(false);
             _t = 0; ApplyShape(); Shot(System.IO.Path.Combine(dir, "compact.png"));
-            // expanded info
+            // expanded info (with weather)
+            _weather = new WeatherInfo(20, "Cloudy", "☁️", "Kitale"); ShowWeather();
             _t = 1; _page = "info"; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "info.png"));
             // control center
             _page = "cc"; _syncing = true; SlVol.Value = 62; VolPct.Text = "62%"; SlBri.Value = 80; BriPct.Text = "80%"; _syncing = false;

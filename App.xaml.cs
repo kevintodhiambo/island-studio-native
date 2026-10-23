@@ -36,6 +36,9 @@ namespace IslandNative
                 sb.AppendLine($"brightness supported: {br.Supported}");
                 int b0 = br.Get(); sb.AppendLine($"brightness now: {b0}");
                 if (b0 >= 0) { br.Set(b0); sb.AppendLine("brightness Set() ran without error"); }
+
+                var w = System.Threading.Tasks.Task.Run(() => WeatherService.Fetch()).GetAwaiter().GetResult();
+                sb.AppendLine($"weather: {(w == null ? "null" : $"{w.Temp}° {w.Label} {w.City}")}");
             }
             catch (Exception ex) { sb.AppendLine("DIAG ERROR: " + ex); }
             try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "islandstudio-diag.txt"), sb.ToString()); } catch { }
