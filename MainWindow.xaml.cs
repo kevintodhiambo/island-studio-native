@@ -44,6 +44,10 @@ namespace IslandNative
 
         WeatherInfo? _weather;
 
+        int _tmTotal = 25 * 60, _tmLeft = 25 * 60;
+        bool _tmRunning;
+        WaterData _water = new();
+
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
         int _eqBeat;
@@ -69,6 +73,8 @@ namespace IslandNative
                 _vol = new VolumeService();
                 _bri = new BrightnessService();
                 InitControlCenter();
+                UpdateTimerUi();
+                UpdateWaterUi();
 
                 FetchWeather();
                 var wx = new DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
@@ -95,6 +101,18 @@ namespace IslandNative
             BtnLyrics.Click += (s, e) => { _lyricsOn = true; _lyIdx = -2; ApplyLayers(false); UpdateLyrics(); };
             BtnLyricsBack.Click += (s, e) => { _lyricsOn = false; ApplyLayers(false); };
 
+            // Focus timer
+            TmP5.Click += (s, e) => SetTimer(5);
+            TmP15.Click += (s, e) => SetTimer(15);
+            TmP25.Click += (s, e) => SetTimer(25);
+            TmStart.Click += (s, e) => { if (_tmLeft <= 0) _tmLeft = _tmTotal; _tmRunning = !_tmRunning; UpdateTimerUi(); };
+            TmReset.Click += (s, e) => { _tmLeft = _tmTotal; _tmRunning = false; UpdateTimerUi(); };
+
+            // Water reminder
+            _water = WaterStore.Today();
+            WtDrink.Click += (s, e) => { _water.Amount += 250; WaterStore.Save(_water); UpdateWaterUi(); };
+            WtUndo.Click += (s, e) => { _water.Amount = Math.Max(0, _water.Amount - 250); WaterStore.Save(_water); UpdateWaterUi(); };
+
             // Scroll the expanded notch to switch pages (media / info / control center).
             PreviewMouseWheel += (s, e) =>
             {
@@ -107,7 +125,7 @@ namespace IslandNative
             };
 
             var clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            clock.Tick += (s, e) => { UpdateClock(); UpdateBattery(); PollControlCenter(); };
+            clock.Tick += (s, e) => { UpdateClock(); UpdateBattery(); PollControlCenter(); TickTimer(); };
             clock.Start();
 
             var loop = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
@@ -225,12 +243,14 @@ namespace IslandNative
 
             bool showEyes = idle;
             bool showCompMedia = !showEyes && compHalf && media && _mi.Playing;
-            bool showCompClock = !showEyes && !showCompMedia && compHalf;
+            bool showCompTimer = !showEyes && !showCompMedia && compHalf && _tmRunning;
+            bool showCompClock = !showEyes && !showCompMedia && !showCompTimer && compHalf;
 
             Eyes.Visibility = showEyes ? Visibility.Visible : Visibility.Collapsed;
             CompactMedia.Visibility = showCompMedia ? Visibility.Visible : Visibility.Collapsed;
+            CompactTimer.Visibility = showCompTimer ? Visibility.Visible : Visibility.Collapsed;
             CompactClock.Visibility = showCompClock ? Visibility.Visible : Visibility.Collapsed;
-            CompactMedia.Opacity = compOp; CompactClock.Opacity = compOp;
+            CompactMedia.Opacity = CompactTimer.Opacity = CompactClock.Opacity = compOp;
 
             // Expanded pages, chosen by _page (scroll to switch).
             var pages = Pages();
@@ -240,7 +260,10 @@ namespace IslandNative
             ExpMedia.Visibility = mediaPage ? Visibility.Visible : Visibility.Collapsed;
             ExpInfo.Visibility = (exp && _page == "info") ? Visibility.Visible : Visibility.Collapsed;
             ExpCC.Visibility = (exp && _page == "cc") ? Visibility.Visible : Visibility.Collapsed;
-            ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = expOp;
+            ExpTimer.Visibility = (exp && _page == "timer") ? Visibility.Visible : Visibility.Collapsed;
+            ExpWater.Visibility = (exp && _page == "water") ? Visibility.Visible : Visibility.Collapsed;
+            ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = ExpTimer.Opacity = ExpWater.Opacity = expOp;
+            if (exp && _page == "water") UpdateWaterUi();
             if (mediaPage)
             {
                 PlayerView.Visibility = _lyricsOn ? Visibility.Collapsed : Visibility.Visible;
@@ -255,6 +278,8 @@ namespace IslandNative
             if (_mi.Active) l.Add("media");
             l.Add("info");
             l.Add("cc");
+            l.Add("timer");
+            l.Add("water");
             return l;
         }
 
@@ -413,6 +438,46 @@ namespace IslandNative
             else if (!want && _dock != null) { _dock.Close(); _dock = null; }
         }
 
+        // ---------- focus timer ----------
+        void SetTimer(int minutes)
+        {
+            _tmTotal = minutes * 60;
+            _tmLeft = _tmTotal;
+            _tmRunning = false;
+            UpdateTimerUi();
+        }
+
+        void TickTimer()
+        {
+            if (!_tmRunning) return;
+            if (_tmLeft > 0) _tmLeft--;
+            if (_tmLeft <= 0)
+            {
+                _tmRunning = false;
+                try { System.Media.SystemSounds.Asterisk.Play(); } catch { }
+            }
+            UpdateTimerUi();
+        }
+
+        void UpdateTimerUi()
+        {
+            string txt = $"{_tmLeft / 60:0}:{_tmLeft % 60:00}";
+            TmDisplay.Text = txt;
+            CtDisplay.Text = txt;
+            TmStart.Content = _tmRunning ? "" : ""; // pause / play
+        }
+
+        // ---------- water ----------
+        void UpdateWaterUi()
+        {
+            if (_water.Date != DateTime.Now.ToString("yyyy-MM-dd")) _water = WaterStore.Today();
+            WtText.Text = $"{_water.Amount} / {_water.Goal} ml";
+            WtGoal.Text = _water.Amount >= _water.Goal ? "✓ goal reached" : "";
+            double ratio = _water.Goal > 0 ? Math.Min(1.0, (double)_water.Amount / _water.Goal) : 0;
+            double avail = ((FrameworkElement)WtFill.Parent).ActualWidth;
+            if (avail > 0) WtFill.Width = ratio * avail;
+        }
+
         void FetchWeather()
         {
             WeatherService.Fetch().ContinueWith(t => Dispatcher.BeginInvoke(() =>
@@ -446,6 +511,13 @@ namespace IslandNative
             // control center
             _page = "cc"; _syncing = true; SlVol.Value = 62; VolPct.Text = "62%"; SlBri.Value = 80; BriPct.Text = "80%"; _syncing = false;
             ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "cc.png"));
+            // focus timer
+            _page = "timer"; _tmTotal = 25 * 60; _tmLeft = 18 * 60 + 25; _tmRunning = true; UpdateTimerUi();
+            ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "timer.png"));
+            _tmRunning = false;
+            // water
+            _page = "water"; _water = new WaterData { Date = DateTime.Now.ToString("yyyy-MM-dd"), Amount = 1250, Goal = 2000 };
+            ApplyShape(); ApplyLayers(false); Notch.UpdateLayout(); UpdateWaterUi(); Shot(System.IO.Path.Combine(dir, "water.png"));
             // expanded media (fake now-playing so the player renders)
             OnMedia(new MediaInfo { Active = true, Playing = true, Title = "Paper Sky", Artist = "Lumen Coast · Summer Flows", Position = 71, Duration = 193 });
             _page = "media"; ApplyShape(); ApplyLayers(false); UpdateProgress(); BtnLyrics.Visibility = Visibility.Visible; Shot(System.IO.Path.Combine(dir, "media.png"));
