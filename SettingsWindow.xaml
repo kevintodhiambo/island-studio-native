@@ -84,6 +84,14 @@
                         </StackPanel>
                         <CheckBox x:Name="TgEyes" Style="{StaticResource Toggle}" HorizontalAlignment="Right"/>
                     </Grid>
+                    <Border Height="1" Background="#33000000" Opacity="0.4"/>
+                    <Grid Margin="0,12">
+                        <StackPanel HorizontalAlignment="Left" MaxWidth="330">
+                            <TextBlock Text="Minimal notch" Style="{StaticResource RowLabel}"/>
+                            <TextBlock Text="At rest, shrink to a thin line. Good for thick-bezel laptops. Hover to open it as usual." Style="{StaticResource RowHint}"/>
+                        </StackPanel>
+                        <CheckBox x:Name="TgMinimal" Style="{StaticResource Toggle}" HorizontalAlignment="Right"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 

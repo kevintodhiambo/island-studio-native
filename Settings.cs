@@ -7,6 +7,7 @@ namespace IslandNative
     public class SettingsData
     {
         public bool IdleEyes { get; set; } = true;
+        public bool MinimalNotch { get; set; } = false;
         public bool DockEnabled { get; set; } = true;
         public double DockIconSize { get; set; } = 44;
         public bool DockMagnify { get; set; } = true;

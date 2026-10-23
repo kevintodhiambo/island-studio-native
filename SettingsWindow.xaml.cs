@@ -28,6 +28,7 @@ namespace IslandNative
             TgStartup.Checked += (s, e) => { if (!_loading) AutoStart.Set(true); };
             TgStartup.Unchecked += (s, e) => { if (!_loading) AutoStart.Set(false); };
             TgEyes.Click += (s, e) => Apply(() => Settings.Data.IdleEyes = TgEyes.IsChecked == true);
+            TgMinimal.Click += (s, e) => Apply(() => Settings.Data.MinimalNotch = TgMinimal.IsChecked == true);
             TgDock.Click += (s, e) => Apply(() => Settings.Data.DockEnabled = TgDock.IsChecked == true);
             TgMagnify.Click += (s, e) => Apply(() => Settings.Data.DockMagnify = TgMagnify.IsChecked == true);
 
@@ -45,6 +46,7 @@ namespace IslandNative
             _loading = true;
             TgStartup.IsChecked = AutoStart.Enabled;
             TgEyes.IsChecked = Settings.Data.IdleEyes;
+            TgMinimal.IsChecked = Settings.Data.MinimalNotch;
             TgDock.IsChecked = Settings.Data.DockEnabled;
             TgMagnify.IsChecked = Settings.Data.DockMagnify;
             SlDockSize.Value = Settings.Data.DockIconSize;

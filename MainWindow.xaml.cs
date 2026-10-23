@@ -19,6 +19,7 @@ namespace IslandNative
     {
         const double CompactW = 230, CompactH = 38;
         const double ExpandedW = 460, ExpandedH = 142;
+        const double MinW = 110, MinH = 6; // thin resting line in minimal-notch mode
         const double Shoulder = 16, Bottom = 20;
 
         double _t, _tTarget, _lastTarget = -1;
@@ -245,11 +246,15 @@ namespace IslandNative
 
         void ApplyShape()
         {
-            double w = CompactW + (ExpandedW - CompactW) * _t;
-            double h = CompactH + (ExpandedH - CompactH) * _t;
+            double baseW = Settings.Data.MinimalNotch ? MinW : CompactW;
+            double baseH = Settings.Data.MinimalNotch ? MinH : CompactH;
+            double w = baseW + (ExpandedW - baseW) * _t;
+            double h = baseH + (ExpandedH - baseH) * _t;
             Notch.Width = w;
             Notch.Height = h;
-            NotchBg.Data = BuildNotch(w, h, Shoulder, Bottom);
+            double rs = Math.Min(Shoulder, h * 0.42);
+            double rb = Math.Min(Bottom, h - rs); if (rb < 0) rb = 0;
+            NotchBg.Data = BuildNotch(w, h, rs, rb);
         }
 
         void ApplyLayers(bool idle)
@@ -259,10 +264,12 @@ namespace IslandNative
             bool media = _mi.Active;
             bool compHalf = _t < 0.6;
 
-            bool showEyes = idle;
-            bool showCompMedia = !showEyes && compHalf && media && _mi.Playing;
-            bool showCompTimer = !showEyes && !showCompMedia && compHalf && _tmRunning;
-            bool showCompClock = !showEyes && !showCompMedia && !showCompTimer && compHalf;
+            // Minimal mode: the resting notch is just a thin line, no content.
+            bool minRest = Settings.Data.MinimalNotch && _t < 0.5;
+            bool showEyes = idle && !minRest;
+            bool showCompMedia = !minRest && !showEyes && compHalf && media && _mi.Playing;
+            bool showCompTimer = !minRest && !showEyes && !showCompMedia && compHalf && _tmRunning;
+            bool showCompClock = !minRest && !showEyes && !showCompMedia && !showCompTimer && compHalf;
 
             Eyes.Visibility = showEyes ? Visibility.Visible : Visibility.Collapsed;
             CompactMedia.Visibility = showCompMedia ? Visibility.Visible : Visibility.Collapsed;
@@ -458,6 +465,8 @@ namespace IslandNative
             bool want = Settings.Data.DockEnabled;
             if (want && _dock == null) { _dock = new DockWindow(); _dock.Show(); }
             else if (!want && _dock != null) { _dock.Close(); _dock = null; }
+            ApplyShape();
+            ApplyLayers(false);
         }
 
         // ---------- focus timer ----------
@@ -649,6 +658,8 @@ namespace IslandNative
             _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "compact-media.png"));
             // idle eyes
             _mi = new MediaInfo(); _t = 0; ApplyShape(); ApplyLayers(true); Shot(System.IO.Path.Combine(dir, "idle.png"));
+            // minimal notch (thin resting line)
+            Settings.Data.MinimalNotch = true; _page = "info"; _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "minimal.png")); Settings.Data.MinimalNotch = false;
             // dock bar
             try { new DockWindow().RenderBarForCapture(System.IO.Path.Combine(dir, "dock.png")); } catch { }
             // settings window
