@@ -37,6 +37,38 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Thin slider for the control center -->
+        <Style x:Key="CcSlider" TargetType="Slider">
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100"/>
+            <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid Height="16" VerticalAlignment="Center">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template><ControlTemplate><Border Height="4" CornerRadius="2" Background="#F2F2F4" VerticalAlignment="Center"/></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template><ControlTemplate><Border Height="4" CornerRadius="2" Background="#33FFFFFF" VerticalAlignment="Center"/></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="14" Height="14" Focusable="False">
+                                        <Thumb.Template><ControlTemplate><Ellipse Fill="White"><Ellipse.Effect><DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.4" Color="Black"/></Ellipse.Effect></Ellipse></ControlTemplate></Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -127,6 +159,31 @@
                     <TextBlock x:Name="EBatt" Foreground="#E6E6EA" FontSize="12.5" FontWeight="SemiBold"/>
                 </Border>
             </Grid>
+
+            <!-- ===== EXPANDED: control center (volume + brightness) ===== -->
+            <Grid x:Name="ExpCC" Opacity="0" Visibility="Collapsed" Margin="24,20,24,18">
+                <StackPanel VerticalAlignment="Center">
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="VolIcon" Grid.Column="0" Text="&#xE767;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Foreground="#E6E6EA" VerticalAlignment="Center" Width="22" TextAlignment="Center" Cursor="Hand"/>
+                        <Slider x:Name="SlVol" Grid.Column="1" Style="{StaticResource CcSlider}" Margin="12,0"/>
+                        <TextBlock x:Name="VolPct" Grid.Column="2" Foreground="#9A9A9E" FontSize="12" Width="34" TextAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid x:Name="BriRow">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE706;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Foreground="#E6E6EA" VerticalAlignment="Center" Width="22" TextAlignment="Center"/>
+                        <Slider x:Name="SlBri" Grid.Column="1" Style="{StaticResource CcSlider}" Margin="12,0"/>
+                        <TextBlock x:Name="BriPct" Grid.Column="2" Foreground="#9A9A9E" FontSize="12" Width="34" TextAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <!-- page dots -->
+            <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,6" Opacity="0"/>
         </Grid>
     </Grid>
 </Window>

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -30,6 +31,12 @@ namespace IslandNative
         Tray? _tray;
         DockWindow? _dock;
 
+        VolumeService _vol = null!;
+        BrightnessService _bri = null!;
+        string _page = "info";
+        bool _syncing;
+        string _lastDotsKey = "";
+
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
         int _eqBeat;
@@ -52,6 +59,10 @@ namespace IslandNative
                 _media.Changed += OnMedia;
                 _media.Start();
 
+                _vol = new VolumeService();
+                _bri = new BrightnessService();
+                InitControlCenter();
+
                 // Offscreen render capture for verification while the screen is locked.
                 var shotDir = Environment.GetEnvironmentVariable("ISLAND_SHOT_DIR");
                 if (!string.IsNullOrEmpty(shotDir))
@@ -70,8 +81,19 @@ namespace IslandNative
             BtnPlay.Click += (s, e) => _media?.TogglePlay();
             BtnNext.Click += (s, e) => _media?.Next();
 
+            // Scroll the expanded notch to switch pages (media / info / control center).
+            PreviewMouseWheel += (s, e) =>
+            {
+                if (_t < 0.5) return;
+                var pg = Pages();
+                int i = pg.IndexOf(_page); if (i < 0) i = 0;
+                i = (i + (e.Delta < 0 ? 1 : -1) + pg.Count) % pg.Count;
+                _page = pg[i];
+                ApplyLayers(false);
+            };
+
             var clock = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            clock.Tick += (s, e) => { UpdateClock(); UpdateBattery(); };
+            clock.Tick += (s, e) => { UpdateClock(); UpdateBattery(); PollControlCenter(); };
             clock.Start();
 
             var loop = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
@@ -116,7 +138,12 @@ namespace IslandNative
 
             if (inside) _lastActive = DateTime.Now;
             _tTarget = inside ? 1 : 0;
-            if (_tTarget != _lastTarget) { SetClickThrough(_tTarget == 0); _lastTarget = _tTarget; }
+            if (_tTarget != _lastTarget)
+            {
+                SetClickThrough(_tTarget == 0);
+                if (_tTarget == 1) _page = _mi.Active ? "media" : "info";
+                _lastTarget = _tTarget;
+            }
 
             double prev = _t;
             _t += (_tTarget - _t) * 0.28;
@@ -157,9 +184,41 @@ namespace IslandNative
             CompactClock.Visibility = showCompClock ? Visibility.Visible : Visibility.Collapsed;
             CompactMedia.Opacity = compOp; CompactClock.Opacity = compOp;
 
-            ExpMedia.Visibility = (_t > 0.05 && media) ? Visibility.Visible : Visibility.Collapsed;
-            ExpInfo.Visibility = (_t > 0.05 && !media) ? Visibility.Visible : Visibility.Collapsed;
-            ExpMedia.Opacity = expOp; ExpInfo.Opacity = expOp;
+            // Expanded pages, chosen by _page (scroll to switch).
+            var pages = Pages();
+            if (!pages.Contains(_page)) _page = "info";
+            bool exp = _t > 0.05;
+            ExpMedia.Visibility = (exp && _page == "media") ? Visibility.Visible : Visibility.Collapsed;
+            ExpInfo.Visibility = (exp && _page == "info") ? Visibility.Visible : Visibility.Collapsed;
+            ExpCC.Visibility = (exp && _page == "cc") ? Visibility.Visible : Visibility.Collapsed;
+            ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = expOp;
+            UpdateDots(pages, exp ? expOp : 0);
+        }
+
+        List<string> Pages()
+        {
+            var l = new List<string>();
+            if (_mi.Active) l.Add("media");
+            l.Add("info");
+            l.Add("cc");
+            return l;
+        }
+
+        void UpdateDots(List<string> pages, double op)
+        {
+            Dots.Opacity = op;
+            string key = string.Join(",", pages) + "|" + _page;
+            if (key == _lastDotsKey) return;
+            _lastDotsKey = key;
+            Dots.Children.Clear();
+            foreach (var pg in pages)
+            {
+                Dots.Children.Add(new System.Windows.Shapes.Ellipse
+                {
+                    Width = 5, Height = 5, Margin = new Thickness(3, 0, 3, 0),
+                    Fill = new SolidColorBrush(pg == _page ? Color.FromRgb(0xE6, 0xE6, 0xEA) : Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF))
+                });
+            }
         }
 
         // One filled outline: flush top, concave shoulders flaring to the edge, rounded bottom.
@@ -261,6 +320,38 @@ namespace IslandNative
             CPlugIcon.Visibility = low ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        // ---------- control center ----------
+        void InitControlCenter()
+        {
+            if (!_bri.Supported) BriRow.Visibility = Visibility.Collapsed;
+            _syncing = true;
+            SlVol.Value = _vol.Get() * 100;
+            if (_bri.Supported) { int b = _bri.Get(); if (b >= 0) SlBri.Value = b; }
+            _syncing = false;
+            UpdateVolIcon();
+            VolPct.Text = $"{(int)Math.Round(SlVol.Value)}%";
+            BriPct.Text = $"{(int)Math.Round(SlBri.Value)}%";
+
+            SlVol.ValueChanged += (s, e) => { if (_syncing) return; _vol.Set((float)(SlVol.Value / 100)); VolPct.Text = $"{(int)Math.Round(SlVol.Value)}%"; UpdateVolIcon(); };
+            SlBri.ValueChanged += (s, e) => { if (_syncing) return; _bri.Set((int)SlBri.Value); BriPct.Text = $"{(int)Math.Round(SlBri.Value)}%"; };
+            VolIcon.MouseLeftButtonDown += (s, e) => { _vol.SetMute(!_vol.GetMute()); UpdateVolIcon(); };
+        }
+
+        void PollControlCenter()
+        {
+            if (_vol == null) return;
+            if (!(_t > 0.3 && _page == "cc")) return; // only while the CC page is visible
+            _syncing = true;
+            double v = _vol.Get() * 100;
+            if (Math.Abs(v - SlVol.Value) > 0.6) SlVol.Value = v;
+            VolPct.Text = $"{(int)Math.Round(SlVol.Value)}%";
+            UpdateVolIcon();
+            if (_bri != null && _bri.Supported) { int b = _bri.Get(); if (b >= 0 && Math.Abs(b - SlBri.Value) > 0.6) SlBri.Value = b; BriPct.Text = $"{(int)Math.Round(SlBri.Value)}%"; }
+            _syncing = false;
+        }
+
+        void UpdateVolIcon() => VolIcon.Text = _vol.GetMute() ? "" : "";
+
         static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
         // ---------- offscreen capture (verify without the screen) ----------
@@ -268,13 +359,16 @@ namespace IslandNative
         {
             Directory.CreateDirectory(dir);
             // compact clock
-            _mi = new MediaInfo(); ApplyLayers(false);
+            _mi = new MediaInfo(); _page = "info"; ApplyLayers(false);
             _t = 0; ApplyShape(); Shot(System.IO.Path.Combine(dir, "compact.png"));
             // expanded info
-            _t = 1; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "info.png"));
+            _t = 1; _page = "info"; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "info.png"));
+            // control center
+            _page = "cc"; _syncing = true; SlVol.Value = 62; VolPct.Text = "62%"; SlBri.Value = 80; BriPct.Text = "80%"; _syncing = false;
+            ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "cc.png"));
             // expanded media (fake now-playing so the player renders)
             OnMedia(new MediaInfo { Active = true, Playing = true, Title = "Paper Sky", Artist = "Lumen Coast · Summer Flows", Position = 71, Duration = 193 });
-            ApplyShape(); ApplyLayers(false); UpdateProgress(); Shot(System.IO.Path.Combine(dir, "media.png"));
+            _page = "media"; ApplyShape(); ApplyLayers(false); UpdateProgress(); Shot(System.IO.Path.Combine(dir, "media.png"));
             // compact now-playing
             _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "compact-media.png"));
             // idle eyes

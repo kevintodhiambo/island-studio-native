@@ -11,9 +11,13 @@
     <RootNamespace>IslandNative</RootNamespace>
     <Product>Island Studio</Product>
     <Company>SkyLogic IT Solutions</Company>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
 
 </Project>
