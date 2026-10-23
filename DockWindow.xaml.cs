@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -14,6 +14,8 @@ using System.Windows.Threading;
 
 namespace IslandNative
 {
+    public class DockAppDef { public string Name { get; set; } = ""; public string Path { get; set; } = ""; }
+
     public partial class DockWindow : Window
     {
         const double Base = 44, Max = 66;
@@ -21,20 +23,28 @@ namespace IslandNative
 
         class Item
         {
-            public string Name = "", Path = "";
+            public DockAppDef Def = null!;
+            public StackPanel Stack = null!;
             public Image Img = null!;
             public Ellipse Dot = null!;
             public IntPtr Hwnd;
         }
 
         readonly List<Item> _items = new();
+        List<DockAppDef> _apps = new();
         IntPtr _hwnd;
         DateTime _lastRun = DateTime.MinValue;
+
+        // drag-to-reorder
+        Item? _drag;
+        double _dragStartX;
+        bool _dragMoved;
 
         public DockWindow()
         {
             InitializeComponent();
-            BuildItems();
+            _apps = DockConfig.Load();
+            Rebuild();
 
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
             Loaded += (s, e) =>
@@ -47,47 +57,113 @@ namespace IslandNative
             };
         }
 
-        void BuildItems()
+        void Rebuild()
         {
-            string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            string sys = Environment.SystemDirectory;
-            var seed = new (string name, string path)[]
+            Items.Children.Clear();
+            _items.Clear();
+            foreach (var def in _apps) AddItem(def);
+            AddPlusTile();
+        }
+
+        void AddItem(DockAppDef def)
+        {
+            if (!File.Exists(def.Path)) return;
+            var img = new Image { Source = NativeWindows.IconFor(def.Path), Width = Base, Height = Base };
+            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+            img.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 3, Opacity = 0.4, Color = Colors.Black };
+            var dot = new Ellipse { Width = 4, Height = 4, Fill = Brushes.White, Opacity = 0, Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
+
+            var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = def.Name, Background = Brushes.Transparent };
+            stack.Children.Add(img);
+            stack.Children.Add(dot);
+
+            var it = new Item { Def = def, Stack = stack, Img = img, Dot = dot };
+
+            // right-click → remove
+            var menu = new ContextMenu();
+            var remove = new MenuItem { Header = "Remove from dock" };
+            remove.Click += (s, e) => { _apps.Remove(def); DockConfig.Save(_apps); Rebuild(); };
+            menu.Items.Add(remove);
+            stack.ContextMenu = menu;
+
+            // drag to reorder, or click to launch/toggle
+            stack.MouseLeftButtonDown += (s, e) => { _drag = it; _dragStartX = e.GetPosition(this).X; _dragMoved = false; stack.CaptureMouse(); e.Handled = true; };
+            stack.MouseMove += (s, e) =>
             {
-                ("File Explorer", System.IO.Path.Combine(win, "explorer.exe")),
-                ("Notepad",       System.IO.Path.Combine(sys, "notepad.exe")),
-                ("Paint",         System.IO.Path.Combine(sys, "mspaint.exe")),
-                ("Calculator",    System.IO.Path.Combine(sys, "calc.exe")),
-                ("Task Manager",  System.IO.Path.Combine(sys, "Taskmgr.exe")),
+                if (_drag != it || e.LeftButton != MouseButtonState.Pressed) return;
+                double dx = e.GetPosition(this).X - _dragStartX;
+                if (Math.Abs(dx) > 6) _dragMoved = true;
+                if (_dragMoved) { stack.RenderTransform = new TranslateTransform(dx, 0); System.Windows.Controls.Panel.SetZIndex(stack, 10); }
+            };
+            stack.MouseLeftButtonUp += (s, e) =>
+            {
+                if (_drag != it) return;
+                stack.ReleaseMouseCapture();
+                if (_dragMoved) ReorderTo(it, e.GetPosition(this).X);
+                else OnClick(it);
+                stack.RenderTransform = null;
+                _drag = null;
             };
 
-            foreach (var (name, path) in seed)
+            Items.Children.Add(stack);
+            _items.Add(it);
+        }
+
+        void AddPlusTile()
+        {
+            var plus = new TextBlock { Text = "+", FontSize = 26, Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xCE)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var border = new Border { Width = Base, Height = Base, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), Child = plus };
+            var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = "Add an app" };
+            stack.Children.Add(border);
+            stack.Children.Add(new Ellipse { Width = 4, Height = 4, Opacity = 0, Margin = new Thickness(0, 4, 0, 0) });
+            stack.MouseLeftButtonUp += (s, e) => AddApp();
+            Items.Children.Add(stack);
+        }
+
+        void AddApp()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Add an app to the dock", Filter = "Programs (*.exe)|*.exe", InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) };
+            if (dlg.ShowDialog() == true)
             {
-                if (!File.Exists(path)) continue;
-                var img = new Image { Source = NativeWindows.IconFor(path), Width = Base, Height = Base };
-                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-                img.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 3, Opacity = 0.4, Color = Colors.Black };
-                var dot = new Ellipse { Width = 4, Height = 4, Fill = Brushes.White, Opacity = 0, Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Center };
-
-                var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = name };
-                stack.Children.Add(img);
-                stack.Children.Add(dot);
-
-                var it = new Item { Name = name, Path = path, Img = img, Dot = dot };
-                stack.MouseLeftButtonUp += (s, e) => OnClick(it);
-                Items.Children.Add(stack);
-                _items.Add(it);
+                var name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+                _apps.Add(new DockAppDef { Name = name, Path = dlg.FileName });
+                DockConfig.Save(_apps);
+                Rebuild();
+                RefreshRunning();
             }
+        }
+
+        void ReorderTo(Item it, double cursorX)
+        {
+            int target = _items.Count;
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (_items[i] == it) continue;
+                double center;
+                try { center = _items[i].Stack.TransformToAncestor(this).Transform(new Point(_items[i].Stack.ActualWidth / 2, 0)).X; }
+                catch { continue; }
+                if (cursorX < center) { target = i; break; }
+            }
+            int from = _apps.IndexOf(it.Def);
+            if (from < 0) return;
+            if (target > from) target--;
+            target = Math.Max(0, Math.Min(_apps.Count - 1, target));
+            _apps.RemoveAt(from);
+            _apps.Insert(target, it.Def);
+            DockConfig.Save(_apps);
+            Rebuild();
+            RefreshRunning();
         }
 
         void OnClick(Item it)
         {
             if (it.Hwnd != IntPtr.Zero) NativeWindows.Toggle(it.Hwnd);
-            else NativeWindows.Launch(it.Path);
+            else NativeWindows.Launch(it.Def.Path);
         }
 
         void Position()
         {
-            var wa = SystemParameters.WorkArea; // excludes the taskbar
+            var wa = SystemParameters.WorkArea;
             Left = wa.Left + (wa.Width - Width) / 2;
             Top = wa.Bottom - Height;
         }
@@ -99,19 +175,20 @@ namespace IslandNative
             GetCursorPos(out var p);
             double cx = p.X / scale, cy = p.Y / scale;
 
-            foreach (var it in _items)
+            if (_drag == null || !_dragMoved)
             {
-                double icx;
-                try { icx = it.Img.PointToScreen(new Point(it.Img.ActualWidth / 2, 0)).X / scale; }
-                catch { icx = -9999; }
-                double d = Math.Abs(cx - icx);
-                double s = 1;
-                if (d < Influence) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
-                double size = Base * s;
-                it.Img.Width = size; it.Img.Height = size;
+                foreach (var it in _items)
+                {
+                    double icx;
+                    try { icx = it.Img.PointToScreen(new Point(it.Img.ActualWidth / 2, 0)).X / scale; }
+                    catch { icx = -9999; }
+                    double d = Math.Abs(cx - icx);
+                    double s = 1;
+                    if (d < Influence) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
+                    it.Img.Width = Base * s; it.Img.Height = Base * s;
+                }
             }
 
-            // Clickable only while the cursor is over the bar; otherwise click-through.
             bool over = false;
             try
             {
@@ -120,7 +197,7 @@ namespace IslandNative
                 over = cx >= bx && cx <= bx + Bar.ActualWidth && cy >= by && cy <= by + Bar.ActualHeight;
             }
             catch { }
-            SetClickThrough(!over);
+            SetClickThrough(!over && _drag == null);
 
             if ((DateTime.Now - _lastRun).TotalSeconds > 1.5) { _lastRun = DateTime.Now; RefreshRunning(); }
         }
@@ -136,15 +213,15 @@ namespace IslandNative
             }
             foreach (var it in _items)
             {
-                it.Hwnd = map.TryGetValue(it.Path, out var h) ? h : IntPtr.Zero;
+                it.Hwnd = map.TryGetValue(it.Def.Path, out var h) ? h : IntPtr.Zero;
                 it.Dot.Opacity = it.Hwnd != IntPtr.Zero ? 1 : 0;
             }
         }
 
-        // ---------- capture (verify offscreen) ----------
+        // ---------- capture ----------
         public void RenderBarForCapture(string path)
         {
-            foreach (var it in _items) it.Dot.Opacity = it.Name == "File Explorer" || it.Name == "Notepad" ? 1 : 0;
+            for (int i = 0; i < _items.Count; i++) _items[i].Dot.Opacity = i < 2 ? 1 : 0;
             Bar.Measure(new Size(2000, 2000));
             Bar.Arrange(new Rect(new Point(0, 0), Bar.DesiredSize));
             Bar.UpdateLayout();
@@ -183,5 +260,44 @@ namespace IslandNative
         [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr h, int i, int v);
         [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+    }
+
+    // Dock app list persisted to %APPDATA%\IslandStudio\dock.json
+    public static class DockConfig
+    {
+        static string Dir => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "IslandStudio");
+        static string FilePath => System.IO.Path.Combine(Dir, "dock.json");
+
+        public static List<DockAppDef> Load()
+        {
+            try { if (File.Exists(FilePath)) { var l = JsonSerializer.Deserialize<List<DockAppDef>>(File.ReadAllText(FilePath)); if (l is { Count: > 0 }) return l; } }
+            catch { }
+            var def = Seed();
+            Save(def);
+            return def;
+        }
+
+        public static void Save(List<DockAppDef> apps)
+        {
+            try { Directory.CreateDirectory(Dir); File.WriteAllText(FilePath, JsonSerializer.Serialize(apps, new JsonSerializerOptions { WriteIndented = true })); }
+            catch { }
+        }
+
+        static List<DockAppDef> Seed()
+        {
+            string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            string sys = Environment.SystemDirectory;
+            var cand = new (string name, string path)[]
+            {
+                ("File Explorer", System.IO.Path.Combine(win, "explorer.exe")),
+                ("Notepad",       System.IO.Path.Combine(sys, "notepad.exe")),
+                ("Paint",         System.IO.Path.Combine(sys, "mspaint.exe")),
+                ("Calculator",    System.IO.Path.Combine(sys, "calc.exe")),
+                ("Task Manager",  System.IO.Path.Combine(sys, "Taskmgr.exe")),
+            };
+            var list = new List<DockAppDef>();
+            foreach (var (name, path) in cand) if (File.Exists(path)) list.Add(new DockAppDef { Name = name, Path = path });
+            return list;
+        }
     }
 }
