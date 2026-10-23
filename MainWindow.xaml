@@ -256,6 +256,26 @@
                 </StackPanel>
             </Grid>
 
+            <!-- ===== EXPANDED: to-do ===== -->
+            <Grid x:Name="ExpTodo" Opacity="0" Visibility="Collapsed" Margin="24,14,22,12">
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Hidden">
+                    <StackPanel x:Name="TodoList"/>
+                </ScrollViewer>
+                <TextBlock x:Name="TodoEmpty" Grid.Row="0" Text="Nothing to do" Foreground="#6E6E76" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                <Button x:Name="TdAdd" Grid.Row="1" Content="+ Add task" Style="{StaticResource Pill}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+            </Grid>
+
+            <!-- ===== EXPANDED: file shelf ===== -->
+            <Grid x:Name="ExpShelf" Opacity="0" Visibility="Collapsed" Margin="22,14,22,12" AllowDrop="True" Background="#01000000">
+                <TextBlock x:Name="ShelfHint" Text="Drag files here to keep them handy" Foreground="#6E6E76" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <ScrollViewer x:Name="ShelfScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Visibility="Collapsed">
+                    <StackPanel x:Name="ShelfList" Orientation="Horizontal" VerticalAlignment="Center"/>
+                </ScrollViewer>
+            </Grid>
+
             <!-- page dots -->
             <StackPanel x:Name="Dots" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,6" Opacity="0"/>
         </Grid>

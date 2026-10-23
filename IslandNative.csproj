@@ -11,7 +11,7 @@
     <RootNamespace>IslandNative</RootNamespace>
     <Product>Island Studio</Product>
     <Company>SkyLogic IT Solutions</Company>
-    <Version>0.8.0</Version>
+    <Version>0.9.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>

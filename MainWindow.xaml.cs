@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -47,6 +49,11 @@ namespace IslandNative
         int _tmTotal = 25 * 60, _tmLeft = 25 * 60;
         bool _tmRunning;
         WaterData _water = new();
+
+        List<TodoItem> _todos = new();
+        List<string> _shelf = new();
+        Point _shelfDragStart;
+        bool _addTaskOpen;
 
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
@@ -112,6 +119,17 @@ namespace IslandNative
             _water = WaterStore.Today();
             WtDrink.Click += (s, e) => { _water.Amount += 250; WaterStore.Save(_water); UpdateWaterUi(); };
             WtUndo.Click += (s, e) => { _water.Amount = Math.Max(0, _water.Amount - 250); WaterStore.Save(_water); UpdateWaterUi(); };
+
+            // To-do
+            _todos = TodoStore.Load();
+            TdAdd.Click += (s, e) => OpenAddTask();
+            BuildTodoList();
+
+            // File shelf
+            _shelf = ShelfStore.Load();
+            ExpShelf.DragOver += (s, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
+            ExpShelf.Drop += OnShelfDrop;
+            BuildShelfList();
 
             // Scroll the expanded notch to switch pages (media / info / control center).
             PreviewMouseWheel += (s, e) =>
@@ -262,7 +280,9 @@ namespace IslandNative
             ExpCC.Visibility = (exp && _page == "cc") ? Visibility.Visible : Visibility.Collapsed;
             ExpTimer.Visibility = (exp && _page == "timer") ? Visibility.Visible : Visibility.Collapsed;
             ExpWater.Visibility = (exp && _page == "water") ? Visibility.Visible : Visibility.Collapsed;
-            ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = ExpTimer.Opacity = ExpWater.Opacity = expOp;
+            ExpTodo.Visibility = (exp && _page == "todo") ? Visibility.Visible : Visibility.Collapsed;
+            ExpShelf.Visibility = (exp && _page == "shelf") ? Visibility.Visible : Visibility.Collapsed;
+            ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = ExpTimer.Opacity = ExpWater.Opacity = ExpTodo.Opacity = ExpShelf.Opacity = expOp;
             if (exp && _page == "water") UpdateWaterUi();
             if (mediaPage)
             {
@@ -280,6 +300,8 @@ namespace IslandNative
             l.Add("cc");
             l.Add("timer");
             l.Add("water");
+            l.Add("todo");
+            l.Add("shelf");
             return l;
         }
 
@@ -478,6 +500,97 @@ namespace IslandNative
             if (avail > 0) WtFill.Width = ratio * avail;
         }
 
+        // ---------- to-do ----------
+        void OpenAddTask()
+        {
+            if (_addTaskOpen) return;
+            _addTaskOpen = true;
+            var w = new AddTaskWindow(text => { _todos.Add(new TodoItem { Text = text }); TodoStore.Save(_todos); BuildTodoList(); });
+            w.Closed += (s, e) => _addTaskOpen = false;
+            w.Show();
+        }
+
+        void BuildTodoList()
+        {
+            TodoList.Children.Clear();
+            foreach (var item in _todos.ToList())
+            {
+                var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var check = new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(1.6), BorderBrush = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x76)), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, Background = Brushes.Transparent };
+                if (item.Done)
+                {
+                    var green = new SolidColorBrush(Color.FromRgb(0x32, 0xD7, 0x4B));
+                    check.Background = green; check.BorderBrush = green;
+                    check.Child = new TextBlock { Text = "✓", Foreground = Brushes.White, FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                }
+                check.MouseLeftButtonUp += (s, e) => { item.Done = !item.Done; TodoStore.Save(_todos); BuildTodoList(); };
+                Grid.SetColumn(check, 0); row.Children.Add(check);
+
+                var txt = new TextBlock { Text = item.Text, Foreground = new SolidColorBrush(item.Done ? Color.FromRgb(0x6E, 0x6E, 0x76) : Color.FromRgb(0xE6, 0xE6, 0xEA)), FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+                if (item.Done) txt.TextDecorations = TextDecorations.Strikethrough;
+                Grid.SetColumn(txt, 1); row.Children.Add(txt);
+
+                var del = new TextBlock { Text = "✕", Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x76)), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, Margin = new Thickness(8, 0, 0, 0) };
+                del.MouseLeftButtonUp += (s, e) => { _todos.Remove(item); TodoStore.Save(_todos); BuildTodoList(); };
+                Grid.SetColumn(del, 2); row.Children.Add(del);
+
+                TodoList.Children.Add(row);
+            }
+            TodoList.Visibility = _todos.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            TodoEmpty.Visibility = _todos.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        // ---------- file shelf ----------
+        void OnShelfDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            foreach (var f in (string[])e.Data.GetData(DataFormats.FileDrop))
+                if (!_shelf.Contains(f)) _shelf.Add(f);
+            ShelfStore.Save(_shelf);
+            BuildShelfList();
+        }
+
+        void BuildShelfList()
+        {
+            ShelfList.Children.Clear();
+            foreach (var path in _shelf.ToList())
+            {
+                var p = path;
+                var icon = new Image { Source = NativeWindows.IconFor(p), Width = 40, Height = 40 };
+                RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
+                var name = new TextBlock { Text = System.IO.Path.GetFileName(p), Foreground = new SolidColorBrush(Color.FromRgb(0xB0, 0xB0, 0xB6)), FontSize = 10.5, MaxWidth = 64, TextTrimming = TextTrimming.CharacterEllipsis, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 3, 0, 0) };
+                var stack = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(8, 0, 8, 0), Cursor = Cursors.Hand, Width = 64, VerticalAlignment = VerticalAlignment.Center, ToolTip = p };
+                stack.Children.Add(icon); stack.Children.Add(name);
+
+                stack.MouseLeftButtonDown += (s, e) => _shelfDragStart = e.GetPosition(this);
+                stack.MouseMove += (s, e) =>
+                {
+                    if (e.LeftButton == MouseButtonState.Pressed && (e.GetPosition(this) - _shelfDragStart).Length > 8 && File.Exists(p))
+                    {
+                        try { DragDrop.DoDragDrop(stack, new DataObject(DataFormats.FileDrop, new[] { p }), DragDropEffects.Copy); } catch { }
+                    }
+                };
+                stack.MouseLeftButtonUp += (s, e) =>
+                {
+                    if ((e.GetPosition(this) - _shelfDragStart).Length <= 8)
+                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(p) { UseShellExecute = true }); } catch { }
+                };
+                var menu = new ContextMenu();
+                var rm = new MenuItem { Header = "Remove from shelf" };
+                rm.Click += (s, e) => { _shelf.Remove(p); ShelfStore.Save(_shelf); BuildShelfList(); };
+                menu.Items.Add(rm); stack.ContextMenu = menu;
+
+                ShelfList.Children.Add(stack);
+            }
+            bool any = _shelf.Count > 0;
+            ShelfScroll.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+            ShelfHint.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         void FetchWeather()
         {
             WeatherService.Fetch().ContinueWith(t => Dispatcher.BeginInvoke(() =>
@@ -518,6 +631,12 @@ namespace IslandNative
             // water
             _page = "water"; _water = new WaterData { Date = DateTime.Now.ToString("yyyy-MM-dd"), Amount = 1250, Goal = 2000 };
             ApplyShape(); ApplyLayers(false); Notch.UpdateLayout(); UpdateWaterUi(); Shot(System.IO.Path.Combine(dir, "water.png"));
+            // to-do
+            _page = "todo"; _todos = new List<TodoItem> { new() { Text = "Revise the report" }, new() { Text = "Reply to Dina", Done = true }, new() { Text = "Post weekly update" } }; BuildTodoList();
+            ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "todo.png"));
+            // file shelf
+            _page = "shelf"; _shelf = new List<string> { System.IO.Path.Combine(Environment.SystemDirectory, "notepad.exe"), System.IO.Path.Combine(Environment.SystemDirectory, "calc.exe") }; BuildShelfList();
+            ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "shelf.png"));
             // expanded media (fake now-playing so the player renders)
             OnMedia(new MediaInfo { Active = true, Playing = true, Title = "Paper Sky", Artist = "Lumen Coast · Summer Flows", Position = 71, Duration = 193 });
             _page = "media"; ApplyShape(); ApplyLayers(false); UpdateProgress(); BtnLyrics.Visibility = Visibility.Visible; Shot(System.IO.Path.Combine(dir, "media.png"));
