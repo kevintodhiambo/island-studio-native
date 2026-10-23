@@ -16,11 +16,9 @@ namespace IslandNative
     {
         const double CompactW = 230, CompactH = 38;
         const double ExpandedW = 460, ExpandedH = 142;
-        const double IdleW = 92, IdleH = 34; // small "eyes" pill when resting
         const double Shoulder = 16, Bottom = 20;
 
         double _t, _tTarget, _lastTarget = -1;
-        double _idleT; // 0 = compact, 1 = idle (eyes) pill
         DateTime _lastActive = DateTime.Now;
         const double IdleSeconds = 15;
 
@@ -30,6 +28,7 @@ namespace IslandNative
         MediaService _media = null!;
         MediaInfo _mi = new();
         Tray? _tray;
+        DockWindow? _dock;
 
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
@@ -61,8 +60,10 @@ namespace IslandNative
                     return;
                 }
                 _tray = new Tray();
+                _dock = new DockWindow();
+                _dock.Show();
             };
-            Closed += (s, e) => _tray?.Dispose();
+            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); };
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
 
             BtnPrev.Click += (s, e) => _media?.Prev();
@@ -122,11 +123,7 @@ namespace IslandNative
             if (Math.Abs(_t - _tTarget) < 0.0015) _t = _tTarget;
 
             bool idle = _t < 0.02 && !(_mi.Active && _mi.Playing) && (DateTime.Now - _lastActive).TotalSeconds > IdleSeconds;
-            double idleTarget = idle ? 1 : 0, pIdle = _idleT;
-            _idleT += (idleTarget - _idleT) * 0.2;
-            if (Math.Abs(_idleT - idleTarget) < 0.002) _idleT = idleTarget;
-
-            if (Math.Abs(_t - prev) > 0.00005 || Math.Abs(_idleT - pIdle) > 0.00005) ApplyShape();
+            if (Math.Abs(_t - prev) > 0.00005) ApplyShape();
             ApplyLayers(idle);
             if (idle) { Blink(); Glance(); }
             else if (EyesT.X != 0) EyesT.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(150)));
@@ -137,10 +134,8 @@ namespace IslandNative
 
         void ApplyShape()
         {
-            double baseW = CompactW + (IdleW - CompactW) * _idleT;
-            double baseH = CompactH + (IdleH - CompactH) * _idleT;
-            double w = baseW + (ExpandedW - baseW) * _t;
-            double h = baseH + (ExpandedH - baseH) * _t;
+            double w = CompactW + (ExpandedW - CompactW) * _t;
+            double h = CompactH + (ExpandedH - CompactH) * _t;
             Notch.Width = w;
             Notch.Height = h;
             NotchBg.Data = BuildNotch(w, h, Shoulder, Bottom);
@@ -282,8 +277,10 @@ namespace IslandNative
             ApplyShape(); ApplyLayers(false); UpdateProgress(); Shot(System.IO.Path.Combine(dir, "media.png"));
             // compact now-playing
             _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "compact-media.png"));
-            // idle eyes pill
-            _mi = new MediaInfo(); _t = 0; _idleT = 1; ApplyShape(); ApplyLayers(true); Shot(System.IO.Path.Combine(dir, "idle.png"));
+            // idle eyes
+            _mi = new MediaInfo(); _t = 0; ApplyShape(); ApplyLayers(true); Shot(System.IO.Path.Combine(dir, "idle.png"));
+            // dock bar
+            try { new DockWindow().RenderBarForCapture(System.IO.Path.Combine(dir, "dock.png")); } catch { }
             Application.Current.Shutdown();
         }
 
