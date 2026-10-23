@@ -31,6 +31,7 @@ namespace IslandNative
             TgMinimal.Click += (s, e) => Apply(() => Settings.Data.MinimalNotch = TgMinimal.IsChecked == true);
             TgDock.Click += (s, e) => Apply(() => Settings.Data.DockEnabled = TgDock.IsChecked == true);
             TgMagnify.Click += (s, e) => Apply(() => Settings.Data.DockMagnify = TgMagnify.IsChecked == true);
+            TgWater.Click += (s, e) => Apply(() => Settings.Data.WaterWallpaper = TgWater.IsChecked == true);
 
             SlDockSize.ValueChanged += (s, e) =>
             {
@@ -50,6 +51,7 @@ namespace IslandNative
             TgDock.IsChecked = Settings.Data.DockEnabled;
             TgMagnify.IsChecked = Settings.Data.DockMagnify;
             SlDockSize.Value = Settings.Data.DockIconSize;
+            TgWater.IsChecked = Settings.Data.WaterWallpaper;
             _loading = false;
         }
 

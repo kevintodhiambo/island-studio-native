@@ -33,6 +33,7 @@ namespace IslandNative
         MediaInfo _mi = new();
         Tray? _tray;
         DockWindow? _dock;
+        WaterWallpaper? _wall;
 
         VolumeService _vol = null!;
         BrightnessService _bri = null!;
@@ -98,9 +99,10 @@ namespace IslandNative
                 }
                 _tray = new Tray();
                 if (Settings.Data.DockEnabled) { _dock = new DockWindow(); _dock.Show(); }
+                if (Settings.Data.WaterWallpaper) StartWallpaper();
                 Settings.Changed += OnSettingsChanged;
             };
-            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); Settings.Changed -= OnSettingsChanged; };
+            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); _wall?.Close(); Settings.Changed -= OnSettingsChanged; };
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
 
             BtnPrev.Click += (s, e) => _media?.Prev();
@@ -465,8 +467,19 @@ namespace IslandNative
             bool want = Settings.Data.DockEnabled;
             if (want && _dock == null) { _dock = new DockWindow(); _dock.Show(); }
             else if (!want && _dock != null) { _dock.Close(); _dock = null; }
+
+            bool wantWall = Settings.Data.WaterWallpaper;
+            if (wantWall && _wall == null) StartWallpaper();
+            else if (!wantWall && _wall != null) { _wall.Close(); _wall = null; }
+
             ApplyShape();
             ApplyLayers(false);
+        }
+
+        void StartWallpaper()
+        {
+            try { _wall = new WaterWallpaper(); _wall.Show(); }
+            catch { _wall = null; }
         }
 
         // ---------- focus timer ----------
@@ -664,6 +677,17 @@ namespace IslandNative
             try { new DockWindow().RenderBarForCapture(System.IO.Path.Combine(dir, "dock.png")); } catch { }
             // settings window
             try { new SettingsWindow().RenderForCapture(System.IO.Path.Combine(dir, "settings.png")); } catch { }
+            // water wallpaper (ripple over the real desktop wallpaper, offscreen)
+            try
+            {
+                var wall = new WaterWallpaper(true);
+                long src = wall.SourceChecksum();
+                wall.CaptureTest(System.IO.Path.Combine(dir, "wallpaper.png"), 40);
+                long outc = wall.OutputChecksum();
+                File.WriteAllText(System.IO.Path.Combine(dir, "wallpaper.txt"),
+                    $"src brightness sum={src}\nout brightness sum={outc}\ndelta={outc - src}\n");
+            }
+            catch (Exception ex) { try { File.WriteAllText(System.IO.Path.Combine(dir, "wallpaper.txt"), "ERR " + ex); } catch { } }
             Application.Current.Shutdown();
         }
 
