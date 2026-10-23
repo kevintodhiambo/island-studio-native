@@ -119,33 +119,46 @@
             </StackPanel>
 
             <!-- ===== EXPANDED: media player ===== -->
-            <Grid x:Name="ExpMedia" Opacity="0" Visibility="Collapsed" Margin="22,16,24,14">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Width="78" Height="78" CornerRadius="12" ClipToBounds="True" VerticalAlignment="Center">
-                    <Grid>
-                        <Border Background="#1C1C20"/>
-                        <Image x:Name="MArt" Stretch="UniformToFill"/>
+            <Grid x:Name="ExpMedia" Opacity="0" Visibility="Collapsed">
+                <!-- Player view -->
+                <Grid x:Name="PlayerView" Margin="22,16,24,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Width="78" Height="78" CornerRadius="12" ClipToBounds="True" VerticalAlignment="Center">
+                        <Grid>
+                            <Border Background="#1C1C20"/>
+                            <Image x:Name="MArt" Stretch="UniformToFill"/>
+                        </Grid>
+                    </Border>
+                    <Grid Grid.Column="1" Margin="16,0,0,0">
+                        <StackPanel VerticalAlignment="Top" Margin="0,2,0,0">
+                            <TextBlock x:Name="MTitle" Foreground="White" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="MArtist" Foreground="#9A9A9E" FontSize="12.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <Grid VerticalAlignment="Bottom" Margin="0,0,0,40" Height="4">
+                            <Border Background="#33FFFFFF" CornerRadius="2"/>
+                            <Border x:Name="MFill" Background="#F2F2F4" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                            <Button x:Name="BtnPrev" Style="{StaticResource IconBtn}" Content="&#xE892;"/>
+                            <Button x:Name="BtnPlay" Style="{StaticResource IconBtn}" Content="&#xE768;" FontSize="18" Width="38" Height="38"/>
+                            <Button x:Name="BtnNext" Style="{StaticResource IconBtn}" Content="&#xE893;"/>
+                        </StackPanel>
+                        <Button x:Name="BtnLyrics" Style="{StaticResource IconBtn}" Content="&#xE720;" Width="30" Height="30" FontSize="14"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom" ToolTip="Lyrics" Visibility="Collapsed"/>
                     </Grid>
-                </Border>
-                <Grid Grid.Column="1" Margin="16,0,0,0">
-                    <StackPanel VerticalAlignment="Top" Margin="0,2,0,0">
-                        <TextBlock x:Name="MTitle" Foreground="White" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock x:Name="MArtist" Foreground="#9A9A9E" FontSize="12.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                </Grid>
+                <!-- Lyrics view -->
+                <Grid x:Name="LyricsView" Margin="26,12,26,12" Visibility="Collapsed">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock x:Name="LyPrev" Foreground="#5E5E66" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="380" Margin="0,0,0,5" TextTrimming="CharacterEllipsis" MaxHeight="20"/>
+                        <TextBlock x:Name="LyCur" Foreground="White" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
+                        <TextBlock x:Name="LyNext" Foreground="#5E5E66" FontSize="13" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="380" Margin="0,5,0,0" TextTrimming="CharacterEllipsis" MaxHeight="20"/>
                     </StackPanel>
-                    <!-- progress -->
-                    <Grid VerticalAlignment="Bottom" Margin="0,0,0,40" Height="4">
-                        <Border Background="#33FFFFFF" CornerRadius="2"/>
-                        <Border x:Name="MFill" Background="#F2F2F4" CornerRadius="2" HorizontalAlignment="Left" Width="0"/>
-                    </Grid>
-                    <!-- controls -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom">
-                        <Button x:Name="BtnPrev" Style="{StaticResource IconBtn}" Content="&#xE892;"/>
-                        <Button x:Name="BtnPlay" Style="{StaticResource IconBtn}" Content="&#xE768;" FontSize="18" Width="38" Height="38"/>
-                        <Button x:Name="BtnNext" Style="{StaticResource IconBtn}" Content="&#xE893;"/>
-                    </StackPanel>
+                    <Button x:Name="BtnLyricsBack" Style="{StaticResource IconBtn}" Content="&#xE72B;" Width="28" Height="28" FontSize="13"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-6,0" ToolTip="Back to player"/>
                 </Grid>
             </Grid>
 

@@ -37,6 +37,11 @@ namespace IslandNative
         bool _syncing;
         string _lastDotsKey = "";
 
+        List<LyricLine>? _lyrics;
+        string _lyricsKey = "";
+        bool _lyricsOn;
+        int _lyIdx = -2;
+
         Rectangle[] _eqBars = null!;
         readonly double[] _eqP = { .3, .6, .4, .7 }, _eqV = new double[4], _eqT = { .3, .6, .4, .7 };
         int _eqBeat;
@@ -80,6 +85,8 @@ namespace IslandNative
             BtnPrev.Click += (s, e) => _media?.Prev();
             BtnPlay.Click += (s, e) => _media?.TogglePlay();
             BtnNext.Click += (s, e) => _media?.Next();
+            BtnLyrics.Click += (s, e) => { _lyricsOn = true; _lyIdx = -2; ApplyLayers(false); UpdateLyrics(); };
+            BtnLyricsBack.Click += (s, e) => { _lyricsOn = false; ApplyLayers(false); };
 
             // Scroll the expanded notch to switch pages (media / info / control center).
             PreviewMouseWheel += (s, e) =>
@@ -117,6 +124,39 @@ namespace IslandNative
             CArt.Source = mi.Art;
             BtnPlay.Content = mi.Playing ? "" : ""; // pause / play
             if (mi.Active) _lastActive = DateTime.Now;
+
+            // New track → reset and fetch synced lyrics from LRCLIB.
+            string key = mi.Title + "|" + mi.Artist;
+            if (key != _lyricsKey)
+            {
+                _lyricsKey = key;
+                _lyrics = null; _lyricsOn = false; _lyIdx = -2;
+                BtnLyrics.Visibility = Visibility.Collapsed;
+                if (mi.Active)
+                {
+                    string k = key;
+                    LyricsService.Fetch(mi.Title, mi.Artist, mi.Duration).ContinueWith(t =>
+                        Dispatcher.BeginInvoke(() =>
+                        {
+                            if (_lyricsKey != k) return; // track changed while fetching
+                            _lyrics = t.Result;
+                            BtnLyrics.Visibility = (_lyrics is { Count: > 0 }) ? Visibility.Visible : Visibility.Collapsed;
+                        }));
+                }
+            }
+        }
+
+        void UpdateLyrics()
+        {
+            if (!_lyricsOn || _lyrics is not { Count: > 0 }) return;
+            double pos = _mi.Position + (_mi.Playing ? (DateTime.Now - _mi.Stamp).TotalSeconds : 0);
+            int idx = -1;
+            for (int i = 0; i < _lyrics.Count; i++) { if (_lyrics[i].Time <= pos + 0.12) idx = i; else break; }
+            if (idx == _lyIdx) return;
+            _lyIdx = idx;
+            LyCur.Text = idx >= 0 ? _lyrics[idx].Text : "♪";
+            LyPrev.Text = idx > 0 ? _lyrics[idx - 1].Text : "";
+            LyNext.Text = (idx + 1 < _lyrics.Count) ? _lyrics[idx + 1].Text : "";
         }
 
         // ---------- main loop ----------
@@ -157,6 +197,7 @@ namespace IslandNative
 
             if (_mi.Active && _mi.Playing) StepEq();
             UpdateProgress();
+            if (_lyricsOn && _t > 0.3) UpdateLyrics();
         }
 
         void ApplyShape()
@@ -188,10 +229,16 @@ namespace IslandNative
             var pages = Pages();
             if (!pages.Contains(_page)) _page = "info";
             bool exp = _t > 0.05;
-            ExpMedia.Visibility = (exp && _page == "media") ? Visibility.Visible : Visibility.Collapsed;
+            bool mediaPage = exp && _page == "media";
+            ExpMedia.Visibility = mediaPage ? Visibility.Visible : Visibility.Collapsed;
             ExpInfo.Visibility = (exp && _page == "info") ? Visibility.Visible : Visibility.Collapsed;
             ExpCC.Visibility = (exp && _page == "cc") ? Visibility.Visible : Visibility.Collapsed;
             ExpMedia.Opacity = ExpInfo.Opacity = ExpCC.Opacity = expOp;
+            if (mediaPage)
+            {
+                PlayerView.Visibility = _lyricsOn ? Visibility.Collapsed : Visibility.Visible;
+                LyricsView.Visibility = _lyricsOn ? Visibility.Visible : Visibility.Collapsed;
+            }
             UpdateDots(pages, exp ? expOp : 0);
         }
 
@@ -368,7 +415,12 @@ namespace IslandNative
             ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "cc.png"));
             // expanded media (fake now-playing so the player renders)
             OnMedia(new MediaInfo { Active = true, Playing = true, Title = "Paper Sky", Artist = "Lumen Coast · Summer Flows", Position = 71, Duration = 193 });
-            _page = "media"; ApplyShape(); ApplyLayers(false); UpdateProgress(); Shot(System.IO.Path.Combine(dir, "media.png"));
+            _page = "media"; ApplyShape(); ApplyLayers(false); UpdateProgress(); BtnLyrics.Visibility = Visibility.Visible; Shot(System.IO.Path.Combine(dir, "media.png"));
+            // synced lyrics
+            _lyrics = new List<LyricLine> { new(60, "and send them through the sky"), new(63, "to find you by the sea"), new(66, "every wing a little song") };
+            _lyricsOn = true; _lyIdx = -2; _mi.Position = 63.5; _mi.Playing = false;
+            UpdateLyrics(); _t = 1; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "lyrics.png"));
+            _lyricsOn = false;
             // compact now-playing
             _t = 0; ApplyShape(); ApplyLayers(false); Shot(System.IO.Path.Combine(dir, "compact-media.png"));
             // idle eyes
