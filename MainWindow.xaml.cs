@@ -677,6 +677,7 @@ namespace IslandNative
             try { new DockWindow().RenderBarForCapture(System.IO.Path.Combine(dir, "dock.png")); } catch { }
             // settings window
             try { new SettingsWindow().RenderForCapture(System.IO.Path.Combine(dir, "settings.png")); } catch { }
+            try { new InstallWindow().RenderForCapture(System.IO.Path.Combine(dir, "install.png")); } catch { }
             // water wallpaper (ripple over the real desktop wallpaper, offscreen)
             try
             {

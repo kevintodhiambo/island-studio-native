@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -8,6 +9,10 @@ namespace IslandNative
 {
     public partial class App : Application
     {
+        // Held for the process lifetime so only one Island Studio ever runs.
+        static Mutex? _single;
+        const string MutexName = @"Local\IslandStudio.SingleInstance.v1";
+
         protected override void OnStartup(StartupEventArgs e)
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -16,7 +21,35 @@ namespace IslandNative
 
             if (Environment.GetEnvironmentVariable("ISLAND_DIAG") != null) { RunDiag(); Shutdown(); return; }
 
-            base.OnStartup(e);
+            // Headless install (verification hook): run the installer logic, log the result, exit.
+            if (Environment.GetEnvironmentVariable("ISLAND_INSTALL") != null)
+            {
+                var (ok, msg) = Installer.Install(false);
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "islandstudio-install.txt"), $"ok={ok}\n{msg}\ninstalled at: {Installer.InstallPath}\n"); } catch { }
+                Shutdown(); return;
+            }
+
+            // Offscreen capture harness: build the notch, render PNGs, exit. No install/mutex.
+            if (Environment.GetEnvironmentVariable("ISLAND_SHOT_DIR") != null) { new MainWindow().Show(); return; }
+
+            // Not running from the install location → this exe is an installer/updater.
+            if (!Installer.IsInstalled) { new InstallWindow().Show(); return; }
+
+            // Installed copy: enforce a single instance.
+            if (!AcquireSingleInstance()) { Shutdown(); return; }
+
+            new MainWindow().Show();
+        }
+
+        // true if we got the lock; false if another instance already holds it.
+        public static bool AcquireSingleInstance()
+        {
+            try
+            {
+                _single = new Mutex(true, MutexName, out bool createdNew);
+                return createdNew;
+            }
+            catch { return true; } // if the mutex can't be created, don't block startup
         }
 
         // Verify the volume/brightness native interop (the control-center backends).
