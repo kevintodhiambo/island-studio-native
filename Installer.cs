@@ -13,7 +13,8 @@ namespace IslandNative
     public static class Installer
     {
         public const string ProductName = "Island Studio";
-        public const string ExeName = "Island Studio.exe";
+        // Must match the published apphost filename (AssemblyName in the csproj).
+        public const string ExeName = "IslandStudio.exe";
 
         public static string InstallDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -69,16 +70,19 @@ namespace IslandNative
             {
                 int closed = CloseOtherInstances();
 
-                Directory.CreateDirectory(InstallDir);
                 string src = CurrentExe;
                 if (string.IsNullOrEmpty(src) || !File.Exists(src))
                     return (false, "Could not locate the running program to copy.");
 
-                // The installed copy was just closed above, so the file is free to replace.
-                // Retry briefly in case the OS is still releasing the handle.
+                string srcDir = Path.GetDirectoryName(src)!;
+                Directory.CreateDirectory(InstallDir);
+
+                // Copy the whole application folder (a folder-based build has the runtime
+                // DLLs next to the exe; a single-file build is just the one exe). Retry
+                // briefly in case the OS is still releasing a just-closed copy.
                 for (int attempt = 0; ; attempt++)
                 {
-                    try { File.Copy(src, InstallPath, true); break; }
+                    try { CopyDir(srcDir, InstallDir); break; }
                     catch (IOException) when (attempt < 10) { System.Threading.Thread.Sleep(200); }
                 }
 
@@ -88,6 +92,16 @@ namespace IslandNative
                 return (true, closed > 0 ? $"Installed. Closed {closed} old copy(ies)." : "Installed.");
             }
             catch (Exception ex) { return (false, ex.Message); }
+        }
+
+        // Recursively copy a directory's contents, overwriting existing files.
+        static void CopyDir(string from, string to)
+        {
+            Directory.CreateDirectory(to);
+            foreach (var f in Directory.GetFiles(from))
+                File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+            foreach (var d in Directory.GetDirectories(from))
+                CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
         }
 
         // Point the HKCU Run key at the installed exe (or remove it).
