@@ -17,7 +17,9 @@ namespace IslandNative
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             DispatcherUnhandledException += (s, a) => { Log(a.Exception); a.Handled = true; };
-            AppDomain.CurrentDomain.UnhandledException += (s, a) => Log(a.ExceptionObject as Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, a) => { Log(a.ExceptionObject as Exception); try { TaskbarManager.Show(); } catch { } };
+            // Never leave the taskbar hidden if the process is ending for any reason.
+            AppDomain.CurrentDomain.ProcessExit += (s, a) => { try { TaskbarManager.Show(); } catch { } };
 
             if (Environment.GetEnvironmentVariable("ISLAND_DIAG") != null) { RunDiag(); Shutdown(); return; }
 

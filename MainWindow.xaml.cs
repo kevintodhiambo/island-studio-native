@@ -100,9 +100,10 @@ namespace IslandNative
                 _tray = new Tray();
                 if (Settings.Data.DockEnabled) { _dock = new DockWindow(); _dock.Show(); }
                 if (Settings.Data.WaterWallpaper) StartWallpaper();
+                TaskbarManager.Apply(Settings.Data.HideTaskbar);
                 Settings.Changed += OnSettingsChanged;
             };
-            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); _wall?.Close(); Settings.Changed -= OnSettingsChanged; };
+            Closed += (s, e) => { _tray?.Dispose(); _dock?.Close(); _wall?.Close(); TaskbarManager.Show(); Settings.Changed -= OnSettingsChanged; };
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
 
             BtnPrev.Click += (s, e) => _media?.Prev();
@@ -471,6 +472,8 @@ namespace IslandNative
             bool wantWall = Settings.Data.WaterWallpaper;
             if (wantWall && _wall == null) StartWallpaper();
             else if (!wantWall && _wall != null) { _wall.Close(); _wall = null; }
+
+            TaskbarManager.Apply(Settings.Data.HideTaskbar);
 
             ApplyShape();
             ApplyLayers(false);

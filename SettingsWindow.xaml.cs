@@ -32,6 +32,8 @@ namespace IslandNative
             TgDock.Click += (s, e) => Apply(() => Settings.Data.DockEnabled = TgDock.IsChecked == true);
             TgMagnify.Click += (s, e) => Apply(() => Settings.Data.DockMagnify = TgMagnify.IsChecked == true);
             TgWater.Click += (s, e) => Apply(() => Settings.Data.WaterWallpaper = TgWater.IsChecked == true);
+            TgHideTaskbar.Click += (s, e) => Apply(() => Settings.Data.HideTaskbar = TgHideTaskbar.IsChecked == true);
+            BtnImport.Click += (s, e) => ImportTaskbarApps();
 
             SlDockSize.ValueChanged += (s, e) =>
             {
@@ -52,10 +54,24 @@ namespace IslandNative
             TgMagnify.IsChecked = Settings.Data.DockMagnify;
             SlDockSize.Value = Settings.Data.DockIconSize;
             TgWater.IsChecked = Settings.Data.WaterWallpaper;
+            TgHideTaskbar.IsChecked = Settings.Data.HideTaskbar;
             _loading = false;
         }
 
         void Apply(Action set) { if (_loading) return; set(); Settings.Save(); }
+
+        // Pull the user's pinned taskbar apps into the dock (no duplicates), then nudge the
+        // dock to reload via Settings.Changed.
+        void ImportTaskbarApps()
+        {
+            var apps = DockConfig.Load();
+            int added = TaskbarPins.ImportInto(apps);
+            DockConfig.Save(apps);
+            Settings.Save();   // fires Settings.Changed → the dock reloads dock.json
+            ImportHint.Text = added > 0
+                ? $"Added {added} app" + (added == 1 ? "" : "s") + " from your taskbar."
+                : "No new taskbar apps to add.";
+        }
 
         // Render the window content to PNG (offscreen verification while the screen is locked).
         public void RenderForCapture(string path)

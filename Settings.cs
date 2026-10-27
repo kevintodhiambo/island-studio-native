@@ -12,6 +12,7 @@ namespace IslandNative
         public double DockIconSize { get; set; } = 44;
         public bool DockMagnify { get; set; } = true;
         public bool WaterWallpaper { get; set; } = false;
+        public bool HideTaskbar { get; set; } = false;
     }
 
     // App settings, persisted to %APPDATA%\IslandStudio\settings.json. Windows subscribe

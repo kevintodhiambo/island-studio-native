@@ -60,7 +60,11 @@ namespace IslandNative
             Closed += (s, e) => Settings.Changed -= OnSettingsChanged;
         }
 
-        void OnSettingsChanged() => Dispatcher.BeginInvoke(() => { Rebuild(); RefreshRunning(); });
+        void OnSettingsChanged() => Dispatcher.BeginInvoke(() =>
+        {
+            _apps = DockConfig.Load();   // pick up an import done from Settings
+            Rebuild(); Position(); RefreshRunning();
+        });
 
         void Rebuild()
         {
@@ -68,6 +72,7 @@ namespace IslandNative
             _items.Clear();
             foreach (var def in _apps) AddItem(def);
             AddPlusTile();
+            AddGearTile();
         }
 
         void AddItem(DockAppDef def)
@@ -125,6 +130,23 @@ namespace IslandNative
             Items.Children.Add(stack);
         }
 
+        void AddGearTile()
+        {
+            var gear = new TextBlock { Text = "", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets, Segoe Fluent Icons"), FontSize = 20, Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xCE)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var border = new Border { Width = Base, Height = Base, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), Child = gear };
+            var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = "Island Studio settings" };
+            stack.Children.Add(border);
+            stack.Children.Add(new Ellipse { Width = 4, Height = 4, Opacity = 0, Margin = new Thickness(0, 4, 0, 0) });
+            stack.MouseLeftButtonUp += (s, e) => OpenSettings();
+            Items.Children.Add(stack);
+        }
+
+        static void OpenSettings()
+        {
+            foreach (Window w in Application.Current.Windows) if (w is SettingsWindow sw) { sw.Activate(); return; }
+            new SettingsWindow().Show();
+        }
+
         void AddApp()
         {
             var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Add an app to the dock", Filter = "Programs (*.exe)|*.exe", InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) };
@@ -169,8 +191,11 @@ namespace IslandNative
         void Position()
         {
             var wa = SystemParameters.WorkArea;
+            // When the taskbar is hidden, the work area still reserves its strip, so sit on
+            // the true screen bottom to use the reclaimed space.
+            double bottom = Settings.Data.HideTaskbar ? SystemParameters.PrimaryScreenHeight : wa.Bottom;
             Left = wa.Left + (wa.Width - Width) / 2;
-            Top = wa.Bottom - Height;
+            Top = bottom - Height;
         }
 
         // ---------- loop: magnify + click-through ----------
@@ -180,28 +205,35 @@ namespace IslandNative
             GetCursorPos(out var p);
             double cx = p.X / scale, cy = p.Y / scale;
 
+            // Dock bar rect (DIPs). Needed both to gate magnification vertically and to
+            // decide click-through.
+            double bx = -1, by = -1, bw = 0, bh = 0;
+            try { var tl = Bar.PointToScreen(new Point(0, 0)); bx = tl.X / scale; by = tl.Y / scale; bw = Bar.ActualWidth; bh = Bar.ActualHeight; }
+            catch { }
+
+            // Only magnify when the cursor is actually near the dock — not anywhere along
+            // the same column higher up the screen (e.g. over the notch). Magnification
+            // begins as the cursor comes within Influence above the bar.
+            bool nearDock = by >= 0 && cy >= by - Influence && cy <= by + bh + 8;
+
             if (_drag == null || !_dragMoved)
             {
                 foreach (var it in _items)
                 {
-                    double icx;
-                    try { icx = it.Img.PointToScreen(new Point(it.Img.ActualWidth / 2, 0)).X / scale; }
-                    catch { icx = -9999; }
-                    double d = Math.Abs(cx - icx);
                     double s = 1;
-                    if (d < Influence && Settings.Data.DockMagnify) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
+                    if (nearDock && Settings.Data.DockMagnify)
+                    {
+                        double icx;
+                        try { icx = it.Img.PointToScreen(new Point(it.Img.ActualWidth / 2, 0)).X / scale; }
+                        catch { icx = -9999; }
+                        double d = Math.Abs(cx - icx);
+                        if (d < Influence) { double f = Math.Cos(d / Influence * Math.PI / 2); s = 1 + (Max / Base - 1) * f * f; }
+                    }
                     it.Img.Width = Base * s; it.Img.Height = Base * s;
                 }
             }
 
-            bool over = false;
-            try
-            {
-                var tl = Bar.PointToScreen(new Point(0, 0));
-                double bx = tl.X / scale, by = tl.Y / scale;
-                over = cx >= bx && cx <= bx + Bar.ActualWidth && cy >= by && cy <= by + Bar.ActualHeight;
-            }
-            catch { }
+            bool over = by >= 0 && cx >= bx && cx <= bx + bw && cy >= by && cy <= by + bh;
             SetClickThrough(!over && _drag == null);
 
             if ((DateTime.Now - _lastRun).TotalSeconds > 1.5) { _lastRun = DateTime.Now; RefreshRunning(); }
@@ -290,6 +322,10 @@ namespace IslandNative
 
         static List<DockAppDef> Seed()
         {
+            // Prefer the user's own pinned taskbar apps; fall back to a sensible default set.
+            var pins = TaskbarPins.Resolve();
+            if (pins.Count > 0) return pins;
+
             string win = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
             string sys = Environment.SystemDirectory;
             var cand = new (string name, string path)[]
@@ -303,6 +339,60 @@ namespace IslandNative
             var list = new List<DockAppDef>();
             foreach (var (name, path) in cand) if (File.Exists(path)) list.Add(new DockAppDef { Name = name, Path = path });
             return list;
+        }
+    }
+
+    // Reads the apps the user pinned to the Windows taskbar (their .lnk shortcuts) and
+    // resolves each to its target exe, so the dock can mirror the taskbar.
+    public static class TaskbarPins
+    {
+        public static List<DockAppDef> Resolve()
+        {
+            var list = new List<DockAppDef>();
+            try
+            {
+                string dir = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    @"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar");
+                if (!Directory.Exists(dir)) return list;
+
+                Type? t = Type.GetTypeFromProgID("WScript.Shell");
+                if (t == null) return list;
+                dynamic shell = Activator.CreateInstance(t)!;
+                foreach (var lnk in Directory.GetFiles(dir, "*.lnk"))
+                {
+                    try
+                    {
+                        dynamic sc = shell.CreateShortcut(lnk);
+                        string target = (string)sc.TargetPath;
+                        System.Runtime.InteropServices.Marshal.ReleaseComObject(sc);
+                        if (string.IsNullOrWhiteSpace(target) || !File.Exists(target)) continue;
+                        if (!target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+                        bool dup = false;
+                        foreach (var a in list) if (string.Equals(a.Path, target, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                        if (dup) continue;
+                        list.Add(new DockAppDef { Name = System.IO.Path.GetFileNameWithoutExtension(lnk), Path = target });
+                    }
+                    catch { }
+                }
+                try { System.Runtime.InteropServices.Marshal.ReleaseComObject(shell); } catch { }
+            }
+            catch { }
+            return list;
+        }
+
+        // Merge the user's pinned taskbar apps into an existing dock list (no duplicates).
+        // Returns how many new apps were added.
+        public static int ImportInto(List<DockAppDef> apps)
+        {
+            int added = 0;
+            foreach (var p in Resolve())
+            {
+                bool dup = false;
+                foreach (var a in apps) if (string.Equals(a.Path, p.Path, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                if (!dup) { apps.Add(p); added++; }
+            }
+            return added;
         }
     }
 }

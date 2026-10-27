@@ -6,7 +6,7 @@ namespace IslandNative
 {
     // Install / update / clean-up so only one clean copy of Island Studio ever exists.
     //
-    // "Install" copies this exe to a fixed per-user location, closes every running copy
+    // "Install" copies this exe's folder to a chosen location, closes every running copy
     // (however it was named or wherever it was launched from), points Start-with-Windows
     // at the installed copy, and launches it. Re-running a downloaded exe is therefore
     // also the update path: it replaces the installed copy and relaunches.
@@ -15,10 +15,19 @@ namespace IslandNative
         public const string ProductName = "Island Studio";
         // Must match the published apphost filename (AssemblyName in the csproj).
         public const string ExeName = "IslandStudio.exe";
+        const string RegKey = @"Software\IslandStudio";
 
-        public static string InstallDir =>
+        public static string DefaultDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                          "Programs", "Island Studio");
+
+        // The folder a prior install chose (remembered), else the default.
+        static string? StoredDir
+        {
+            get { try { using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegKey); return k?.GetValue("InstallDir") as string; } catch { return null; } }
+        }
+
+        public static string InstallDir => StoredDir ?? DefaultDir;
         public static string InstallPath => Path.Combine(InstallDir, ExeName);
 
         public static string CurrentExe
@@ -26,12 +35,16 @@ namespace IslandNative
             get { try { return Process.GetCurrentProcess().MainModule!.FileName!; } catch { return ""; } }
         }
 
-        // We're the installed copy when we're running from the canonical path.
+        // We're the installed copy when we're running from the remembered install folder.
         public static bool IsInstalled
         {
             get
             {
-                try { return string.Equals(Path.GetFullPath(CurrentExe), Path.GetFullPath(InstallPath), StringComparison.OrdinalIgnoreCase); }
+                try
+                {
+                    string? dir = Path.GetDirectoryName(CurrentExe);
+                    return dir != null && string.Equals(Path.GetFullPath(dir), Path.GetFullPath(InstallDir), StringComparison.OrdinalIgnoreCase);
+                }
                 catch { return false; }
             }
         }
@@ -62,41 +75,53 @@ namespace IslandNative
             return closed;
         }
 
-        // Full install: stop other copies, copy here → install dir, set autostart, launch it.
-        // Returns (ok, message). Throws nothing.
-        public static (bool ok, string message) Install(bool startWithWindows)
+        // Full install: stop other copies, copy the app folder → targetDir (default if null),
+        // remember the location, set autostart, launch it. progress reports 0..1 as files copy.
+        public static (bool ok, string message) Install(bool startWithWindows, string? targetDir = null, Action<double>? progress = null)
         {
             try
             {
+                string dest = string.IsNullOrWhiteSpace(targetDir) ? DefaultDir : targetDir!;
+
                 int closed = CloseOtherInstances();
 
                 string src = CurrentExe;
                 if (string.IsNullOrEmpty(src) || !File.Exists(src))
                     return (false, "Could not locate the running program to copy.");
-
                 string srcDir = Path.GetDirectoryName(src)!;
-                Directory.CreateDirectory(InstallDir);
 
-                // Copy the whole application folder (a folder-based build has the runtime
-                // DLLs next to the exe; a single-file build is just the one exe).
-                CopyDir(srcDir, InstallDir);
+                if (string.Equals(Path.GetFullPath(srcDir), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
+                    return (false, "That's already the install folder — pick another, or just run it.");
 
-                SetAutoStart(startWithWindows);
+                Directory.CreateDirectory(dest);
 
-                Process.Start(new ProcessStartInfo(InstallPath) { UseShellExecute = true, WorkingDirectory = InstallDir });
+                int total = CountFiles(srcDir), done = 0;
+                CopyDir(srcDir, dest, () => { done++; progress?.Invoke(total > 0 ? (double)done / total : 1); });
+
+                try { using var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegKey); k?.SetValue("InstallDir", dest); } catch { }
+
+                string destExe = Path.Combine(dest, ExeName);
+                SetAutoStart(startWithWindows, destExe);
+
+                Process.Start(new ProcessStartInfo(destExe) { UseShellExecute = true, WorkingDirectory = dest });
                 return (true, closed > 0 ? $"Installed. Closed {closed} old copy(ies)." : "Installed.");
             }
             catch (Exception ex) { return (false, ex.Message); }
         }
 
+        static int CountFiles(string dir)
+        {
+            int n = 0;
+            try { n += Directory.GetFiles(dir).Length; foreach (var d in Directory.GetDirectories(dir)) n += CountFiles(d); } catch { }
+            return n;
+        }
+
         // Recursively copy a directory's contents, overwriting existing files.
-        static void CopyDir(string from, string to)
+        static void CopyDir(string from, string to, Action? onFile = null)
         {
             Directory.CreateDirectory(to);
-            foreach (var f in Directory.GetFiles(from))
-                CopyFileResilient(f, Path.Combine(to, Path.GetFileName(f)));
-            foreach (var d in Directory.GetDirectories(from))
-                CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
+            foreach (var f in Directory.GetFiles(from)) { CopyFileResilient(f, Path.Combine(to, Path.GetFileName(f))); onFile?.Invoke(); }
+            foreach (var d in Directory.GetDirectories(from)) CopyDir(d, Path.Combine(to, Path.GetFileName(d)), onFile);
         }
 
         // Copy one file, tolerating the locks antivirus real-time scanning puts on each DLL
@@ -119,12 +144,12 @@ namespace IslandNative
         }
 
         // Point the HKCU Run key at the installed exe (or remove it).
-        public static void SetAutoStart(bool on)
+        public static void SetAutoStart(bool on, string? exePath = null)
         {
             const string run = @"Software\Microsoft\Windows\CurrentVersion\Run";
             using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(run, true);
             if (k == null) return;
-            if (on) k.SetValue("IslandStudio", "\"" + InstallPath + "\"");
+            if (on) k.SetValue("IslandStudio", "\"" + (exePath ?? InstallPath) + "\"");
             else k.DeleteValue("IslandStudio", false);
         }
     }
