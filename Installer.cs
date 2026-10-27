@@ -78,13 +78,8 @@ namespace IslandNative
                 Directory.CreateDirectory(InstallDir);
 
                 // Copy the whole application folder (a folder-based build has the runtime
-                // DLLs next to the exe; a single-file build is just the one exe). Retry
-                // briefly in case the OS is still releasing a just-closed copy.
-                for (int attempt = 0; ; attempt++)
-                {
-                    try { CopyDir(srcDir, InstallDir); break; }
-                    catch (IOException) when (attempt < 10) { System.Threading.Thread.Sleep(200); }
-                }
+                // DLLs next to the exe; a single-file build is just the one exe).
+                CopyDir(srcDir, InstallDir);
 
                 SetAutoStart(startWithWindows);
 
@@ -99,9 +94,28 @@ namespace IslandNative
         {
             Directory.CreateDirectory(to);
             foreach (var f in Directory.GetFiles(from))
-                File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true);
+                CopyFileResilient(f, Path.Combine(to, Path.GetFileName(f)));
             foreach (var d in Directory.GetDirectories(from))
                 CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
+        }
+
+        // Copy one file, tolerating the locks antivirus real-time scanning puts on each DLL
+        // as it lands. When File.Copy throws because the scanner grabbed the handle, the
+        // bytes have usually already been written — so if the destination is fully there
+        // (same length), accept it instead of fighting to overwrite a file being scanned.
+        static void CopyFileResilient(string src, string dest)
+        {
+            long srcLen = -1;
+            try { srcLen = new FileInfo(src).Length; } catch { }
+            for (int attempt = 0; ; attempt++)
+            {
+                try { File.Copy(src, dest, true); return; }
+                catch (Exception ex) when ((ex is IOException || ex is UnauthorizedAccessException) && attempt < 30)
+                {
+                    try { if (srcLen >= 0 && File.Exists(dest) && new FileInfo(dest).Length == srcLen) return; } catch { }
+                    System.Threading.Thread.Sleep(200);
+                }
+            }
         }
 
         // Point the HKCU Run key at the installed exe (or remove it).
