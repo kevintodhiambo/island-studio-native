@@ -9,7 +9,8 @@
         FontFamily="Segoe UI Variable Text, Segoe UI" UseLayoutRounding="True">
     <Grid>
         <Border x:Name="Bar" VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                Background="#B81F1F24" CornerRadius="22" Padding="12,8" Margin="0,0,0,8">
+                Background="#B81F1F24" CornerRadius="22" Padding="12,8" Margin="0,0,0,8"
+                AllowDrop="True">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="34" ShadowDepth="7" Opacity="0.5" Color="#000000"/>
             </Border.Effect>

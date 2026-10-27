@@ -109,6 +109,11 @@ namespace IslandNative
             BtnPrev.Click += (s, e) => _media?.Prev();
             BtnPlay.Click += (s, e) => _media?.TogglePlay();
             BtnNext.Click += (s, e) => _media?.Next();
+            BtnGear.Click += (s, e) =>
+            {
+                foreach (Window w in Application.Current.Windows) if (w is SettingsWindow sw) { sw.Activate(); return; }
+                new SettingsWindow().Show();
+            };
             BtnLyrics.Click += (s, e) => { _lyricsOn = true; _lyIdx = -2; ApplyLayers(false); UpdateLyrics(); };
             BtnLyricsBack.Click += (s, e) => { _lyricsOn = false; ApplyLayers(false); };
 
@@ -300,6 +305,9 @@ namespace IslandNative
                 LyricsView.Visibility = _lyricsOn ? Visibility.Visible : Visibility.Collapsed;
             }
             UpdateDots(pages, exp ? expOp : 0);
+
+            BtnGear.Visibility = exp ? Visibility.Visible : Visibility.Collapsed;
+            BtnGear.Opacity = expOp;
         }
 
         List<string> Pages()

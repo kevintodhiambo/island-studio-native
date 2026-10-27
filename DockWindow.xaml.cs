@@ -47,6 +47,9 @@ namespace IslandNative
             _apps = DockConfig.Load();
             Rebuild();
 
+            Bar.DragOver += OnDockDragOver;
+            Bar.Drop += OnDockDrop;
+
             SourceInitialized += (s, e) => { _hwnd = new WindowInteropHelper(this).Handle; SetBaseStyles(); SetClickThrough(true); };
             Loaded += (s, e) =>
             {
@@ -71,8 +74,44 @@ namespace IslandNative
             Items.Children.Clear();
             _items.Clear();
             foreach (var def in _apps) AddItem(def);
-            AddPlusTile();
-            AddGearTile();
+            if (_items.Count == 0) AddDropHint();
+        }
+
+        void AddDropHint()
+        {
+            Items.Children.Add(new TextBlock
+            {
+                Text = "Drag an app here",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x92)),
+                FontSize = 13,
+                Margin = new Thickness(14, 0, 14, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
+
+        // Drop an app's .exe (or a shortcut to one) onto the dock to add it.
+        void OnDockDragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        void OnDockDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            int added = 0;
+            foreach (var f in files)
+            {
+                string? exe = TaskbarPins.ResolveExe(f);
+                if (exe == null) continue;
+                bool dup = false;
+                foreach (var a in _apps) if (string.Equals(a.Path, exe, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                if (dup) continue;
+                _apps.Add(new DockAppDef { Name = System.IO.Path.GetFileNameWithoutExtension(exe), Path = exe });
+                added++;
+            }
+            if (added > 0) { DockConfig.Save(_apps); Rebuild(); RefreshRunning(); }
         }
 
         void AddItem(DockAppDef def)
@@ -117,47 +156,6 @@ namespace IslandNative
 
             Items.Children.Add(stack);
             _items.Add(it);
-        }
-
-        void AddPlusTile()
-        {
-            var plus = new TextBlock { Text = "+", FontSize = 26, Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xCE)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            var border = new Border { Width = Base, Height = Base, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), Child = plus };
-            var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = "Add an app" };
-            stack.Children.Add(border);
-            stack.Children.Add(new Ellipse { Width = 4, Height = 4, Opacity = 0, Margin = new Thickness(0, 4, 0, 0) });
-            stack.MouseLeftButtonUp += (s, e) => AddApp();
-            Items.Children.Add(stack);
-        }
-
-        void AddGearTile()
-        {
-            var gear = new TextBlock { Text = "", FontFamily = new System.Windows.Media.FontFamily("Segoe MDL2 Assets, Segoe Fluent Icons"), FontSize = 20, Foreground = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xCE)), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            var border = new Border { Width = Base, Height = Base, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)), Child = gear };
-            var stack = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(5, 0, 5, 0), Cursor = Cursors.Hand, ToolTip = "Island Studio settings" };
-            stack.Children.Add(border);
-            stack.Children.Add(new Ellipse { Width = 4, Height = 4, Opacity = 0, Margin = new Thickness(0, 4, 0, 0) });
-            stack.MouseLeftButtonUp += (s, e) => OpenSettings();
-            Items.Children.Add(stack);
-        }
-
-        static void OpenSettings()
-        {
-            foreach (Window w in Application.Current.Windows) if (w is SettingsWindow sw) { sw.Activate(); return; }
-            new SettingsWindow().Show();
-        }
-
-        void AddApp()
-        {
-            var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Add an app to the dock", Filter = "Programs (*.exe)|*.exe", InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) };
-            if (dlg.ShowDialog() == true)
-            {
-                var name = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
-                _apps.Add(new DockAppDef { Name = name, Path = dlg.FileName });
-                DockConfig.Save(_apps);
-                Rebuild();
-                RefreshRunning();
-            }
         }
 
         void ReorderTo(Item it, double cursorX)
@@ -361,24 +359,52 @@ namespace IslandNative
                 dynamic shell = Activator.CreateInstance(t)!;
                 foreach (var lnk in Directory.GetFiles(dir, "*.lnk"))
                 {
-                    try
-                    {
-                        dynamic sc = shell.CreateShortcut(lnk);
-                        string target = (string)sc.TargetPath;
-                        System.Runtime.InteropServices.Marshal.ReleaseComObject(sc);
-                        if (string.IsNullOrWhiteSpace(target) || !File.Exists(target)) continue;
-                        if (!target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
-                        bool dup = false;
-                        foreach (var a in list) if (string.Equals(a.Path, target, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
-                        if (dup) continue;
-                        list.Add(new DockAppDef { Name = System.IO.Path.GetFileNameWithoutExtension(lnk), Path = target });
-                    }
-                    catch { }
+                    string? target = ResolveWith(shell, lnk);
+                    if (target == null) continue;
+                    bool dup = false;
+                    foreach (var a in list) if (string.Equals(a.Path, target, StringComparison.OrdinalIgnoreCase)) { dup = true; break; }
+                    if (dup) continue;
+                    list.Add(new DockAppDef { Name = System.IO.Path.GetFileNameWithoutExtension(lnk), Path = target });
                 }
                 try { System.Runtime.InteropServices.Marshal.ReleaseComObject(shell); } catch { }
             }
             catch { }
             return list;
+        }
+
+        // Resolve a dropped path to a runnable .exe: an .exe as-is, or a .lnk's target.
+        public static string? ResolveExe(string path)
+        {
+            try
+            {
+                if (path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    return File.Exists(path) ? path : null;
+                if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                {
+                    Type? t = Type.GetTypeFromProgID("WScript.Shell");
+                    if (t == null) return null;
+                    dynamic shell = Activator.CreateInstance(t)!;
+                    string? tgt = ResolveWith(shell, path);
+                    try { System.Runtime.InteropServices.Marshal.ReleaseComObject(shell); } catch { }
+                    return tgt;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        static string? ResolveWith(dynamic shell, string lnk)
+        {
+            try
+            {
+                dynamic sc = shell.CreateShortcut(lnk);
+                string target = (string)sc.TargetPath;
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(sc);
+                if (string.IsNullOrWhiteSpace(target) || !File.Exists(target)) return null;
+                if (!target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return null;
+                return target;
+            }
+            catch { return null; }
         }
 
         // Merge the user's pinned taskbar apps into an existing dock list (no duplicates).
