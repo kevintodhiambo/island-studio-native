@@ -10,6 +10,7 @@ namespace IslandNative
     public partial class InstallWindow : Window
     {
         bool _handed;   // true once MainWindow has taken over the app lifetime
+        string _targetDir = Installer.DefaultDir;
 
         public InstallWindow()
         {
@@ -21,35 +22,62 @@ namespace IslandNative
 
             var v = Assembly.GetExecutingAssembly().GetName().Version;
             SubText.Text = $"Version {v?.Major}.{v?.Minor}.{v?.Build}";
-            DestText.Text = "Installs to:  " + Installer.InstallPath;
+            ShowDest();
 
             BtnInstall.Click += async (s, e) => await DoInstall();
+            BtnChange.Click += (s, e) => ChangeLocation();
             BtnRunOnce.Click += (s, e) => RunOnce();
+        }
+
+        void ShowDest() => DestText.Text = "Installs to:  " + _targetDir;
+
+        void ChangeLocation()
+        {
+            using var dlg = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Choose where to install Island Studio",
+                UseDescriptionForTitle = true,
+                SelectedPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            };
+            if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.SelectedPath))
+            {
+                // Install into an "Island Studio" folder inside the chosen location.
+                _targetDir = System.IO.Path.Combine(dlg.SelectedPath, "Island Studio");
+                ShowDest();
+            }
         }
 
         async Task DoInstall()
         {
             BtnInstall.IsEnabled = false;
             BtnRunOnce.IsEnabled = false;
+            BtnChange.IsEnabled = false;
             CbStartup.IsEnabled = false;
+            Prog.Value = 0;
+            Prog.Visibility = Visibility.Visible;
             Status.Text = "Installing…";
 
             bool startup = CbStartup.IsChecked == true;
-            var (ok, msg) = await Task.Run(() => Installer.Install(startup));
+            string dir = _targetDir;
+            var progress = new Progress<double>(p => Prog.Value = p);   // marshals to the UI thread
+            var (ok, msg) = await Task.Run(() => Installer.Install(startup, dir, p => ((IProgress<double>)progress).Report(p)));
 
             if (ok)
             {
-                Status.Text = "Done. Opening Island Studio…";
-                // The freshly installed copy is launching and will take over; close the installer.
-                _handed = true;
-                await Task.Delay(600);
+                Prog.Value = 1;
+                Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x32, 0xD7, 0x4B));
+                Status.Text = "✓ Installed — Island Studio is now running at the top of your screen.";
+                _handed = true;   // the freshly installed copy is launching and will take over
+                await Task.Delay(1800);
                 Application.Current.Shutdown();
             }
             else
             {
+                Prog.Visibility = Visibility.Collapsed;
                 Status.Text = "Couldn't install: " + msg;
                 BtnInstall.IsEnabled = true;
                 BtnRunOnce.IsEnabled = true;
+                BtnChange.IsEnabled = true;
                 CbStartup.IsEnabled = true;
             }
         }

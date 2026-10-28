@@ -23,11 +23,14 @@ namespace IslandNative
 
             if (Environment.GetEnvironmentVariable("ISLAND_DIAG") != null) { RunDiag(); Shutdown(); return; }
 
-            // Headless install (verification hook): run the installer logic, log the result, exit.
+            // Headless install (verification hook): run the installer the same way the GUI
+            // does — on a background thread — log the result, exit.
             if (Environment.GetEnvironmentVariable("ISLAND_INSTALL") != null)
             {
-                var (ok, msg) = Installer.Install(false);
-                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "islandstudio-install.txt"), $"ok={ok}\n{msg}\ninstalled at: {Installer.InstallPath}\n"); } catch { }
+                // Run on a background thread like the GUI installer does, to exercise the same path.
+                var (ok, msg) = System.Threading.Tasks.Task.Run(() => Installer.Install(false)).GetAwaiter().GetResult();
+                try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "islandstudio-install.txt"),
+                    $"ok={ok}\n{msg}\nfrom: {AppContext.BaseDirectory}\ninstalled at: {Installer.InstallPath}\n"); } catch { }
                 Shutdown(); return;
             }
 

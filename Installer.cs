@@ -89,10 +89,6 @@ namespace IslandNative
                 if (string.IsNullOrEmpty(src) || !File.Exists(src))
                     return (false, "Could not locate the running program to copy.");
                 string srcDir = Path.GetDirectoryName(src)!;
-
-                if (string.Equals(Path.GetFullPath(srcDir), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
-                    return (false, "That's already the install folder — pick another, or just run it.");
-
                 Directory.CreateDirectory(dest);
 
                 int total = CountFiles(srcDir), done = 0;
@@ -103,7 +99,10 @@ namespace IslandNative
                 string destExe = Path.Combine(dest, ExeName);
                 SetAutoStart(startWithWindows, destExe);
 
-                Process.Start(new ProcessStartInfo(destExe) { UseShellExecute = true, WorkingDirectory = dest });
+                // UseShellExecute=false (direct CreateProcess) so the launch works even when
+                // Install() runs on a background/MTA thread — ShellExecute needs an STA thread
+                // and silently no-ops from the thread pool, which left the app never opening.
+                Process.Start(new ProcessStartInfo(destExe) { UseShellExecute = false, WorkingDirectory = dest });
                 return (true, closed > 0 ? $"Installed. Closed {closed} old copy(ies)." : "Installed.");
             }
             catch (Exception ex) { return (false, ex.Message); }
