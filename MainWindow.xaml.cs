@@ -306,7 +306,10 @@ namespace IslandNative
             }
             UpdateDots(pages, exp ? expOp : 0);
 
-            BtnGear.Visibility = exp ? Visibility.Visible : Visibility.Collapsed;
+            // Settings gear: show when expanded, but not on the lyrics view (the back arrow
+            // owns that corner there).
+            bool gearOn = exp && !(mediaPage && _lyricsOn);
+            BtnGear.Visibility = gearOn ? Visibility.Visible : Visibility.Collapsed;
             BtnGear.Opacity = expOp;
         }
 

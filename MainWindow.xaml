@@ -112,20 +112,19 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- ===== COMPACT: now playing (art + equalizer) ===== -->
-            <Grid x:Name="CompactMedia" Visibility="Collapsed" Margin="14,0">
-                <Grid HorizontalAlignment="Stretch" VerticalAlignment="Center">
-                    <Border HorizontalAlignment="Left" Width="24" Height="24" CornerRadius="6" ClipToBounds="True" Background="#2A2A30">
-                        <Image x:Name="CArt" Stretch="UniformToFill"/>
-                    </Border>
-                    <StackPanel x:Name="CEq" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Height="15">
-                        <Rectangle x:Name="Eq0" Width="3" Height="5" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="Eq1" Width="3" Height="9" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="Eq2" Width="3" Height="6" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
-                        <Rectangle x:Name="Eq3" Width="3" Height="11" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Grid>
-            </Grid>
+            <!-- ===== COMPACT: now playing (art + equalizer, centered together) ===== -->
+            <StackPanel x:Name="CompactMedia" Orientation="Horizontal" Visibility="Collapsed"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="24" Height="24" CornerRadius="6" ClipToBounds="True" Background="#2A2A30" VerticalAlignment="Center">
+                    <Image x:Name="CArt" Stretch="UniformToFill"/>
+                </Border>
+                <StackPanel x:Name="CEq" Orientation="Horizontal" VerticalAlignment="Center" Height="15" Margin="12,0,0,0">
+                    <Rectangle x:Name="Eq0" Width="3" Height="5" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
+                    <Rectangle x:Name="Eq1" Width="3" Height="9" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
+                    <Rectangle x:Name="Eq2" Width="3" Height="6" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
+                    <Rectangle x:Name="Eq3" Width="3" Height="11" Fill="#32D74B" RadiusX="1.5" RadiusY="1.5" Margin="1.5,0" VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
 
             <!-- ===== COMPACT: running focus timer ===== -->
             <StackPanel x:Name="CompactTimer" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
