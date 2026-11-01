@@ -1,0 +1,82 @@
+# Builds Island Studio and gets it code-signed by SignPath, then attaches the
+# signed zip to a GitHub Release.
+#
+# ── One-time setup (do this after SignPath Foundation approves the project) ──
+#   1. In SignPath, note your Organization Id, create a Project (slug below),
+#      an Artifact Configuration that signs IslandStudio.exe and IslandStudio.dll
+#      inside the zip, and a Signing Policy (e.g. "release-signing").
+#   2. In GitHub → repo Settings → Secrets and variables → Actions, add:
+#        SIGNPATH_API_TOKEN   = your SignPath API user token
+#   3. Fill in SIGNPATH_ORGANIZATION_ID and the slugs under `env:` below.
+#
+# Trigger it from the Actions tab (Run workflow) or by pushing a tag like v0.14.0.
+
+name: Build & sign release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write        # needed to attach the signed asset to the release
+
+env:
+  SIGNPATH_ORGANIZATION_ID: REPLACE_WITH_YOUR_ORG_ID
+  SIGNPATH_PROJECT_SLUG: island-studio-native
+  SIGNPATH_POLICY_SLUG: release-signing
+
+jobs:
+  build-and-sign:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish (self-contained folder build)
+        shell: pwsh
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false -p:EnableCompressionInSingleFile=false `
+            -o "publish/Island Studio"
+
+      - name: Package unsigned zip
+        shell: pwsh
+        run: Compress-Archive -Path "publish/Island Studio" -DestinationPath "Island.Studio.unsigned.zip" -Force
+
+      - name: Upload unsigned artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: island-studio-unsigned
+          path: Island.Studio.unsigned.zip
+
+      - name: Submit to SignPath for signing
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Repackage signed build
+        shell: pwsh
+        run: |
+          Expand-Archive -Path "signed/Island.Studio.unsigned.zip" -DestinationPath "signed-out" -Force
+          $ver = (Get-Item "signed-out/Island Studio/IslandStudio.dll").VersionInfo.FileVersion
+          $ver = $ver.Substring(0, $ver.LastIndexOf('.'))   # 0.14.0.0 -> 0.14.0
+          Compress-Archive -Path "signed-out/Island Studio" -DestinationPath "Island.Studio.v$ver.zip" -Force
+          "ASSET=Island.Studio.v$ver.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Attach signed zip to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
